@@ -453,7 +453,7 @@ function FixedCostsPage({ fixedCosts, onAdd, onDelete }) {
   function handleAdd() {
     const parsed = parseFloat(amount)
     if (!name.trim() || !parsed || !category) return
-    onAdd({ id: Date.now(), name: name.trim(), amount: parsed, category })
+    onAdd({ name: name.trim(), amount: parsed, category })
     setName('')
     setAmount('')
     setCategory('')
@@ -1290,6 +1290,19 @@ function AnnualSummary({ transactions, salary, fixedCosts }) {
   )
 }
 
+// ─── LoadingSpinner ───────────────────────────────────────────────────────────
+
+function LoadingSpinner() {
+  return (
+    <div className="min-h-screen bg-[#1A1A2E] flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-8 h-8 border-2 border-white/20 border-t-[#14A085] rounded-full animate-spin" />
+        <p className="text-white/40 text-sm">Loading…</p>
+      </div>
+    </div>
+  )
+}
+
 // ─── AuthScreen ──────────────────────────────────────────────────────────────
 
 function AuthScreen() {
@@ -1422,18 +1435,29 @@ function AuthScreen() {
 // Bumping budgr_version forces a clean slate: wipes old sample-data transactions
 // and stale category memory so they can never pollute a fresh import.
 ;(function migrateStorage() {
-  if (localStorage.getItem('budgr_version') !== '2.0') {
-    localStorage.removeItem('budgr_txns')
-    localStorage.removeItem('budgr_memory')
-    localStorage.setItem('budgr_version', '2.0')
-    console.log('[budgr] storage migrated to v2.0 — old sample data cleared')
+  if (localStorage.getItem('budgr_version') !== '3.0') {
+    ;['budgr_txns', 'budgr_memory', 'budgr_salary', 'budgr_fixed_costs', 'budgr_dedup_keys'].forEach(k => localStorage.removeItem(k))
+    localStorage.setItem('budgr_version', '3.0')
   }
 })()
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [user, setUser] = useState(undefined)
+  const [user, setUser]       = useState(undefined)
+  const [loading, setLoading] = useState(true)
+
+  const [activePage, setActivePage]         = useState('dashboard')
+  const [selectedMonth, setSelectedMonth]   = useState('01')
+  const [dragging, setDragging]             = useState(false)
+  const [toast, setToast]                   = useState(null)
+  const [salary, setSalary]                 = useState({ gross: 0, taxRate: 30, deductions: 0 })
+  const [categoryMemory, setCategoryMemory] = useState({})
+  const [transactions, setTransactions]     = useState([])
+  const [fixedCosts, setFixedCosts]         = useState([])
+  const [dedupKeyCache, setDedupKeyCache]   = useState(new Set())
+
+  const dedupKey = t => `${t.date}|${t.amount}|${t.description.toUpperCase().trim()}`
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1445,55 +1469,90 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const [activePage, setActivePage]       = useState('dashboard')
-  const [selectedMonth, setSelectedMonth] = useState('01')
-  const [dragging, setDragging]           = useState(false)
-  const [toast, setToast]                 = useState(null)
-  const [salary, setSalary]               = useState(() => {
-    try { return JSON.parse(localStorage.getItem('budgr_salary') || 'null') || { gross: 0, taxRate: 30, deductions: 0 } }
-    catch { return { gross: 0, taxRate: 30, deductions: 0 } }
-  })
-  const [categoryMemory, setCategoryMemory] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('budgr_memory') || '{}') }
-    catch { return {} }
-  })
-  const [transactions, setTransactions] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('budgr_txns') || '[]') }
-    catch { return [] }
-  })
-
   useEffect(() => {
-    localStorage.setItem('budgr_txns', JSON.stringify(transactions))
-  }, [transactions])
+    if (user === undefined) return
+    if (user === null) { setLoading(false); return }
 
-  const [fixedCosts, setFixedCosts] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('budgr_fixed_costs') || '[]') }
-    catch { return [] }
-  })
+    async function loadData() {
+      setLoading(true)
+      try {
+        const [txnRes, memRes, fixedRes, salaryRes] = await Promise.all([
+          supabase.from('transactions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
+          supabase.from('category_memory').select('*').eq('user_id', user.id),
+          supabase.from('fixed_costs').select('*').eq('user_id', user.id),
+          supabase.from('salary_settings').select('*').eq('user_id', user.id).maybeSingle(),
+        ])
 
-  useEffect(() => {
-    localStorage.setItem('budgr_fixed_costs', JSON.stringify(fixedCosts))
-  }, [fixedCosts])
+        if (txnRes.data) {
+          const txns = txnRes.data.map(r => ({
+            id: r.id, date: r.date, description: r.description,
+            amount: r.amount, type: r.type, category: r.category ?? '',
+            fromMemory: r.from_memory ?? false,
+          }))
+          setTransactions(txns)
+          setDedupKeyCache(new Set(txns.map(dedupKey)))
+        }
 
-  function addFixedCost(cost) {
-    setFixedCosts(prev => [...prev, cost])
+        if (memRes.data) {
+          const mem = {}
+          memRes.data.forEach(r => { mem[r.key] = r.category })
+          setCategoryMemory(mem)
+        }
+
+        if (fixedRes.data) {
+          setFixedCosts(fixedRes.data.map(r => ({
+            id: r.id, name: r.name, amount: r.amount, category: r.category,
+          })))
+        }
+
+        if (salaryRes.data) {
+          setSalary({
+            gross: salaryRes.data.gross ?? 0,
+            taxRate: salaryRes.data.tax_rate ?? 30,
+            deductions: salaryRes.data.deductions ?? 0,
+          })
+        }
+      } catch (err) {
+        console.error('[budgr] load failed:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [user])
+
+  async function addFixedCost(cost) {
+    const { data, error } = await supabase
+      .from('fixed_costs')
+      .insert({ user_id: user.id, name: cost.name, amount: cost.amount, category: cost.category })
+      .select()
+      .single()
+    if (!error && data) {
+      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category }])
+    }
   }
 
-  function deleteFixedCost(id) {
+  async function deleteFixedCost(id) {
     setFixedCosts(prev => prev.filter(c => c.id !== id))
+    supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
   }
 
-  function setCategory(id, category) {
+  async function setCategory(id, category) {
     const t = transactions.find(t => t.id === id)
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, category } : t))
+    supabase.from('transactions').update({ category }).eq('id', id).eq('user_id', user.id)
     if (t && category) {
       const key = extractKey(t.description)
       if (key) {
         const next = { ...categoryMemory, [key]: category }
         setCategoryMemory(next)
-        localStorage.setItem('budgr_memory', JSON.stringify(next))
+        supabase.from('category_memory').upsert(
+          { user_id: user.id, key, category },
+          { onConflict: 'user_id,key' }
+        )
       }
     }
-    setTransactions(prev => prev.map(t => t.id === id ? { ...t, category } : t))
   }
 
   function parseCSV(text) {
@@ -1532,27 +1591,51 @@ export default function App() {
 
   function handleFile(file) {
     const reader = new FileReader()
-    reader.onload = e => {
+    reader.onload = async e => {
       const incoming = parseCSV(e.target.result).map(t => {
         if (t.type === 'credit') return t
-        const key       = extractKey(t.description)
+        const key        = extractKey(t.description)
         const remembered = key ? categoryMemory[key] : null
         return { ...t, category: remembered || t.category, fromMemory: !!remembered }
       })
 
+      const fresh   = incoming.filter(t => !dedupKeyCache.has(dedupKey(t)))
+      const skipped = incoming.length - fresh.length
+
+      console.log(`[import] ${fresh.length} added, ${skipped} skipped (duplicates)`)
+      setToast({ added: fresh.length, skipped })
+      clearTimeout(handleFile._toastTimer)
+      handleFile._toastTimer = setTimeout(() => setToast(null), 4000)
+
+      if (fresh.length === 0) return
+
+      const { data: inserted, error } = await supabase
+        .from('transactions')
+        .insert(fresh.map(t => ({
+          user_id:     user.id,
+          date:        t.date,
+          description: t.description,
+          amount:      t.amount,
+          type:        t.type,
+          category:    t.category || null,
+          from_memory: t.fromMemory || false,
+        })))
+        .select()
+
+      if (error) { console.error('[import] insert failed:', error); return }
+
+      const insertedTxns = inserted.map(r => ({
+        id: r.id, date: r.date, description: r.description,
+        amount: r.amount, type: r.type, category: r.category ?? '',
+        fromMemory: r.from_memory ?? false,
+      }))
+
+      const nextCache = new Set(dedupKeyCache)
+      insertedTxns.forEach(t => nextCache.add(dedupKey(t)))
+      setDedupKeyCache(nextCache)
+
       setTransactions(prev => {
-        const dedupKey = t => `${t.date}|${t.amount}|${t.description.toUpperCase().slice(0, 8)}`
-        const existingKeys = new Set(prev.map(dedupKey))
-        const fresh   = incoming.filter(t => !existingKeys.has(dedupKey(t)))
-        const skipped = incoming.length - fresh.length
-
-        console.log(`[import] ${fresh.length} added, ${skipped} skipped (duplicates)`)
-        setToast({ added: fresh.length, skipped })
-        clearTimeout(handleFile._toastTimer)
-        handleFile._toastTimer = setTimeout(() => setToast(null), 4000)
-
-        if (fresh.length === 0) return prev
-        const merged = [...fresh, ...prev]
+        const merged = [...insertedTxns, ...prev]
         merged.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
         return merged
       })
@@ -1575,7 +1658,10 @@ export default function App() {
 
   function handleSalaryChange(next) {
     setSalary(next)
-    localStorage.setItem('budgr_salary', JSON.stringify(next))
+    supabase.from('salary_settings').upsert(
+      { user_id: user.id, gross: next.gross, tax_rate: next.taxRate, deductions: next.deductions },
+      { onConflict: 'user_id' }
+    )
   }
 
   const annualNet         = salary.gross > 0
@@ -1593,7 +1679,7 @@ export default function App() {
     settings:     'Settings',
   }
 
-  if (user === undefined) return null
+  if (user === undefined || loading) return <LoadingSpinner />
   if (user === null) return <AuthScreen />
 
   return (
