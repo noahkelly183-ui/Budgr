@@ -270,70 +270,139 @@ function CategoryCombobox({ value, onChange }) {
   )
 }
 
-// ─── TransactionView (Transactions page — full table with amount) ─────────────
+// ─── TransactionView (Transactions page — grouped by month with filter) ───────
 
 function TransactionView({ txns, setCategory }) {
+  const [filter, setFilter] = useState('all')
+
+  const untaggedCount = txns.filter(t => !t.category).length
+  const filtered      = filter === 'untagged' ? txns.filter(t => !t.category) : txns
+
+  const groupMap = new Map()
+  for (const t of filtered) {
+    const ym = yearMonthOf(t.date) || 'unknown'
+    if (!groupMap.has(ym)) groupMap.set(ym, [])
+    groupMap.get(ym).push(t)
+  }
+  const groups = [...groupMap.entries()].map(([ym, txns]) => ({ ym, txns }))
+
   const debits       = txns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
   const refunds      = txns.filter(t => t.category === 'Refund / Return')
   const total        = debits.reduce((sum, t) => sum + t.amount, 0)
   const totalRefunds = refunds.reduce((sum, t) => sum + t.amount, 0)
-  const untagged     = txns.filter(t => !t.category).length
+
+  function groupLabel(ym) {
+    if (ym === 'unknown') return 'Unknown Date'
+    const [year, month] = ym.split('-')
+    return `${MONTHS.find(m => m.id === month)?.label || ym} ${year}`
+  }
+
+  const COLS = '96px 1fr 120px 180px'
 
   return (
     <div className="flex gap-5">
       <div className="flex-1 min-w-0">
 
-        {untagged > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4 text-xs text-amber-700 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-            {untagged} transaction{untagged > 1 ? 's' : ''} still need a category — click to classify
-          </div>
-        )}
-
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Description</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Amount</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Category</th>
-              </tr>
-            </thead>
-            <tbody>
-              {txns.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-xs">
-                    No transactions yet — import a CSV to get started
-                  </td>
-                </tr>
-              ) : txns.map((t, i) => (
-                <tr key={t.id} className={`border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                  <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">{fmtDate(t.date)}</td>
-                  <td className="px-4 py-2.5 text-gray-700">{t.description}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">
-                    <span className="inline-flex items-center justify-end gap-1">
-                      <span className={`text-xs font-bold ${t.type === 'credit' ? 'text-green-500' : 'text-red-400'}`}>
-                        {t.type === 'credit' ? '↑' : '↓'}
-                      </span>
-                      <span className={t.type === 'credit' ? 'text-green-600 text-sm' : 'text-gray-800 text-sm'}>
-                        {fmt(t.amount)}
-                      </span>
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-1.5">
-                      {t.fromMemory && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" title="Auto-categorized from memory" />
-                      )}
-                      <CategoryCombobox value={t.category} onChange={cat => setCategory(t.id, cat)} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Filter bar */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              filter === 'all'
+                ? 'bg-[#0D7377] text-white'
+                : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            All Transactions
+          </button>
+          <button
+            onClick={() => setFilter('untagged')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              filter === 'untagged'
+                ? 'bg-[#0D7377] text-white'
+                : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Untagged Only
+            {untaggedCount > 0 && (
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                filter === 'untagged' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-600'
+              }`}>
+                {untaggedCount}
+              </span>
+            )}
+          </button>
         </div>
+
+        {/* Transaction list */}
+        <div>
+          {/* Column headers */}
+          <div
+            className="bg-white border border-gray-100 rounded-t-xl grid px-4 py-3"
+            style={{ gridTemplateColumns: COLS }}
+          >
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Date</span>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Description</span>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide text-right pr-2">Amount</span>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Category</span>
+          </div>
+
+          {groups.length === 0 ? (
+            <div className="bg-white border border-gray-100 border-t-0 rounded-b-xl px-4 py-8 text-center text-gray-400 text-xs">
+              {filter === 'untagged'
+                ? 'All transactions are tagged!'
+                : 'No transactions yet — import a CSV to get started'}
+            </div>
+          ) : groups.map((group, gi) => {
+            const groupDebits = group.txns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
+            const groupSpend  = groupDebits.reduce((s, t) => s + t.amount, 0)
+            const isLast      = gi === groups.length - 1
+            return (
+              <div key={group.ym}>
+                {/* Month header */}
+                <div className="flex items-center justify-between px-4 py-2.5 border-x border-gray-100 bg-[#1A1A2E]">
+                  <span className="text-white text-xs font-semibold tracking-wide">{groupLabel(group.ym)}</span>
+                  <div className="flex items-center gap-2 text-white/60 text-xs">
+                    <span>{group.txns.length} transaction{group.txns.length !== 1 ? 's' : ''}</span>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-medium text-white/80">{fmt(groupSpend)}</span>
+                  </div>
+                </div>
+
+                {/* Transaction rows */}
+                <div className={`border-x border-gray-100 ${isLast ? 'border-b rounded-b-xl' : ''}`}>
+                  {group.txns.map((t, i) => (
+                    <div
+                      key={t.id}
+                      className={`grid items-center px-4 py-2.5 border-b border-gray-50 last:border-b-0 ${
+                        i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+                      }`}
+                      style={{ gridTemplateColumns: COLS }}
+                    >
+                      <span className="text-gray-500 text-xs whitespace-nowrap">{fmtDate(t.date)}</span>
+                      <span className="text-gray-700 text-sm pr-3 min-w-0 truncate">{t.description}</span>
+                      <span className="flex items-center justify-end gap-1 tabular-nums pr-2">
+                        <span className={`text-xs font-bold ${t.type === 'credit' ? 'text-green-500' : 'text-red-400'}`}>
+                          {t.type === 'credit' ? '↑' : '↓'}
+                        </span>
+                        <span className={t.type === 'credit' ? 'text-green-600 text-sm' : 'text-gray-800 text-sm'}>
+                          {fmt(t.amount)}
+                        </span>
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {t.fromMemory && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" title="Auto-categorized from memory" />
+                        )}
+                        <CategoryCombobox value={t.category} onChange={cat => setCategory(t.id, cat)} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
       </div>
 
       <div className="w-56 shrink-0">
