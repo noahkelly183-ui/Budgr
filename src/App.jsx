@@ -1098,14 +1098,6 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Bank Connection</p>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-            <span className="text-sm text-gray-700">RBC Visa synced</span>
-          </div>
-          <p className="text-xs text-gray-400 mt-1 ml-3.5">Last synced today</p>
-        </div>
 
       </div>
     </div>
@@ -2398,8 +2390,8 @@ export default function App() {
         <div className="px-5 py-5 border-b border-white/10">
           <p className="text-white font-semibold text-base">Budgr</p>
           <div className="flex items-center gap-1.5 mt-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
-            <p className="text-[#14A085] text-xs">connected · {selectedMonthLabel.slice(0, 3)} 2026</p>
+            <span className="w-1.5 h-1.5 rounded-full bg-gray-500 shrink-0" />
+            <p className="text-white/40 text-xs">CSV only</p>
           </div>
         </div>
 
@@ -2452,9 +2444,6 @@ export default function App() {
               Import CSV
               <input type="file" accept=".csv" className="hidden" onChange={handleFileInput} />
             </label>
-            <button className="bg-[#0D7377] text-white text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-[#0b6165] transition-colors">
-              + Connect bank
-            </button>
           </div>
         </header>
 
@@ -2503,9 +2492,51 @@ export default function App() {
 
           {activePage === 'transactions' && (
             <div>
-              <div className="mb-5 border-2 border-dashed border-gray-200 bg-white rounded-xl px-5 py-4 text-center">
-                <p className="text-sm text-gray-400">Drop a bank CSV anywhere, or use <span className="font-medium text-gray-600">Import CSV</span> above</p>
-                <p className="text-xs text-gray-300 mt-0.5">Works with RBC, TD, Scotiabank, BMO, CIBC</p>
+              <div className="grid grid-cols-3 gap-4 mb-5">
+
+                {/* CSV Import — active */}
+                <label className="cursor-pointer bg-white rounded-xl border border-gray-100 p-5 flex flex-col items-center gap-3 hover:border-[#0D7377] hover:shadow-sm transition-all group">
+                  <div className="w-10 h-10 rounded-full bg-[#0D7377]/10 flex items-center justify-center group-hover:bg-[#0D7377]/20 transition-colors">
+                    <svg className="w-5 h-5" style={{ color: '#0D7377' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-gray-800">Import CSV</p>
+                    <p className="text-xs text-gray-400 mt-0.5">RBC, TD, Scotiabank, BMO, CIBC</p>
+                  </div>
+                  <input type="file" accept=".csv" className="hidden" onChange={handleFileInput} />
+                </label>
+
+                {/* Connect Bank — coming soon */}
+                <div className="relative bg-white rounded-xl border border-gray-100 p-5 flex flex-col items-center gap-3 opacity-50 cursor-not-allowed select-none">
+                  <span className="absolute top-3 right-3 text-[10px] font-semibold bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Coming Soon</span>
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h11l5 5v9a2 2 0 01-2 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h13M17 3v7" />
+                    </svg>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-gray-600">Connect Bank</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Direct account sync</p>
+                  </div>
+                </div>
+
+                {/* Connect Credit Card — coming soon */}
+                <div className="relative bg-white rounded-xl border border-gray-100 p-5 flex flex-col items-center gap-3 opacity-50 cursor-not-allowed select-none">
+                  <span className="absolute top-3 right-3 text-[10px] font-semibold bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Coming Soon</span>
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-gray-600">Connect Credit Card</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Automatic card tracking</p>
+                  </div>
+                </div>
+
               </div>
               <TransactionView txns={transactions} setCategory={setCategory} />
             </div>
