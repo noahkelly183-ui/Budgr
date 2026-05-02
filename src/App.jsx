@@ -1,20 +1,30 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell } from 'recharts'
 
 const CATEGORIES = [
   'Bars & Nightlife', 'Car Payment / Insurance', 'Clothing', 'Coffee & Drinks',
-  'Credit Card Payment', 'Dining Out', 'Education', 'Entertainment',
+  'Credit Card Payment', 'Dining Out', 'Education', 'Emergency Fund', 'Entertainment',
   'Fees & Charges', 'Fitness & Gym', 'Fuel',
   'Gifts & Donations', 'Groceries', 'Health & Medical',
   'Hobbies & Sports', 'Home & Garden', 'Insurance',
   'Investments', 'Loan Repayments', 'Personal Care',
-  'Phone & Internet', 'Refund / Return', 'Rent / Mortgage', 'Savings Transfer',
-  'Shopping', 'Subscriptions', 'Transfer / Payment', 'Transit / Rideshare',
+  'Phone & Internet', 'Refund / Return', 'Rent / Mortgage', 'RRSP', 'Savings', 'Savings Transfer',
+  'Shopping', 'Subscriptions', 'TFSA', 'Transfer / Payment', 'Transit / Rideshare',
   'Travel', 'Utilities',
 ]
 
 const EXCLUDE_FROM_TOTALS = new Set(['Transfer / Payment', 'Credit Card Payment'])
+
+// Saving categories — lowercase for case-insensitive matching
+const SAVING_CATEGORIES = ['investments', 'savings', 'savings transfer', 'rrsp', 'tfsa', 'emergency fund']
+const isSaving = cat => !!cat && SAVING_CATEGORIES.includes(cat.toLowerCase())
+const savingCatLabel = cat => {
+  const upper = cat.toUpperCase()
+  if (upper === 'RRSP' || upper === 'TFSA') return upper
+  return cat.replace(/\b\w/g, c => c.toUpperCase())
+}
 const CC_PAYMENT_KEYWORDS = ['PAYMENT - THANK YOU', 'PAI EMENT', 'PAYMENT RECEIVED', 'AUTOPAY']
 
 const RULES = [
@@ -74,8 +84,9 @@ const CATEGORY_GROUPS = [
   { name: 'Transport',       hex: '#F59E0B', cats: ['Car Payment / Insurance', 'Fuel', 'Transit / Rideshare', 'Travel'] },
   { name: 'Food & Drink',    hex: '#22C55E', cats: ['Groceries', 'Dining Out', 'Coffee & Drinks', 'Bars & Nightlife'] },
   { name: 'Lifestyle',       hex: '#A855F7', cats: ['Clothing', 'Entertainment', 'Hobbies & Sports', 'Shopping', 'Personal Care', 'Gifts & Donations'] },
-  { name: 'Bills & Finance', hex: '#3B82F6', cats: ['Phone & Internet', 'Subscriptions', 'Insurance', 'Loan Repayments', 'Fees & Charges', 'Savings Transfer', 'Investments'] },
+  { name: 'Bills & Finance', hex: '#3B82F6', cats: ['Phone & Internet', 'Subscriptions', 'Insurance', 'Loan Repayments', 'Fees & Charges'] },
   { name: 'Health & Growth', hex: '#EC4899', cats: ['Health & Medical', 'Fitness & Gym', 'Education'] },
+  { name: 'Savings',         hex: '#14A085', cats: ['Investments', 'Savings', 'Savings Transfer', 'RRSP', 'TFSA', 'Emergency Fund'] },
 ]
 
 const CATEGORY_COLOR = Object.fromEntries(
@@ -85,8 +96,10 @@ const CATEGORY_COLOR = Object.fromEntries(
 const FIXED_CATS = new Set([
   'Rent / Mortgage', 'Utilities', 'Car Payment / Insurance',
   'Phone & Internet', 'Subscriptions', 'Insurance',
-  'Loan Repayments', 'Savings Transfer', 'Investments',
+  'Loan Repayments',
 ])
+
+const SAVINGS_CATS = ['Investments', 'RRSP', 'Savings', 'Savings Transfer', 'TFSA']
 
 const MONTHS = [
   { id: '01', label: 'January' },
@@ -116,6 +129,7 @@ const NAV_SECTIONS = [
     heading: 'SPENDING',
     items: [
       { id: 'fixed',      label: 'Fixed Costs' },
+      { id: 'savings',    label: 'Savings' },
       { id: 'categories', label: 'Categories' },
       { id: 'annual',     label: 'Annual Summary' },
     ],
@@ -443,6 +457,149 @@ function TransactionView({ txns, setCategory }) {
   )
 }
 
+// ─── CategoriesPage ──────────────────────────────────────────────────────────
+
+const CATS_SET = new Set(CATEGORIES)
+
+function CatSectionLabel({ children }) {
+  return (
+    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pt-5 pb-1 first:pt-0">
+      {children}
+    </p>
+  )
+}
+
+function CatRow({ label, value, muted, italic, colorClass, dot }) {
+  return (
+    <div className="flex items-center py-2 border-b border-gray-50 last:border-0">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        {dot && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dot }} />}
+        <span className={`text-sm truncate ${italic ? 'italic ' : ''}${muted ? 'text-gray-400' : 'text-gray-600'}`}>
+          {label}
+        </span>
+      </div>
+      <span className={`text-sm tabular-nums text-right w-28 shrink-0 font-medium ${colorClass || 'text-gray-800'}`}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function CatSubtotal({ label, value, colorClass }) {
+  return (
+    <div className="flex items-center py-2.5 border-t-2 border-gray-200">
+      <span className="flex-1 text-sm font-semibold text-gray-700">{label}</span>
+      <span className={`text-sm font-bold tabular-nums text-right w-28 shrink-0 ${colorClass || 'text-gray-900'}`}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
+  const allDebitsAnn = transactions.filter(t =>
+    t.type === 'debit' &&
+    !EXCLUDE_FROM_TOTALS.has(t.category) &&
+    yearMonthOf(t.date).slice(0, 4) === APP_YEAR
+  )
+  const monthsWithData = new Set(allDebitsAnn.map(t => yearMonthOf(t.date))).size
+
+  const fixedCostItems    = fixedCosts.filter(c => !isSaving(c.category))
+  const fixedMonthlyTotal = fixedCostItems.reduce((s, c) => s + c.amount, 0)
+  const fixedYTD          = fixedMonthlyTotal * monthsWithData
+
+  const variableDebitsAnn = allDebitsAnn.filter(t => !isSaving(t.category))
+  const varByCategory = {}
+  for (const t of variableDebitsAnn) {
+    const cat = t.category || 'Uncategorized'
+    varByCategory[cat] = (varByCategory[cat] || 0) + t.amount
+  }
+
+  const spendingGroups = CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(group => {
+    const entries = group.cats
+      .filter(cat => varByCategory[cat] > 0)
+      .map(cat => [cat, varByCategory[cat]])
+      .sort(([, a], [, b]) => b - a)
+    const total = entries.reduce((s, [, v]) => s + v, 0)
+    return { ...group, entries, total }
+  }).filter(g => g.total > 0)
+
+  const customEntries = Object.entries(varByCategory)
+    .filter(([cat]) => !CATS_SET.has(cat))
+    .sort(([, a], [, b]) => b - a)
+  const customTotal = customEntries.reduce((s, [, v]) => s + v, 0)
+
+  const savingsByCategory = {}
+  for (const e of savingsEntries) {
+    savingsByCategory[e.category] = (savingsByCategory[e.category] || 0) + e.amount
+  }
+  const savingsCatEntries = Object.entries(savingsByCategory)
+    .map(([cat, monthly]) => [cat, monthly * monthsWithData])
+    .sort(([, a], [, b]) => b - a)
+  const savingsYTD = savingsCatEntries.reduce((s, [, v]) => s + v, 0)
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-6">
+      <h2 className="text-sm font-semibold text-gray-800 mb-1">
+        Categories — {APP_YEAR} YTD
+        {monthsWithData > 0 && (
+          <span className="ml-2 text-xs font-normal text-gray-400">({monthsWithData} mo)</span>
+        )}
+      </h2>
+
+      <CatSectionLabel>Fixed Costs</CatSectionLabel>
+      {fixedCostItems.length > 0
+        ? fixedCostItems.map(c => (
+            <CatRow key={c.id} label={c.name}
+              value={monthsWithData > 0 ? fmt(c.amount * monthsWithData) : '—'} />
+          ))
+        : <CatRow label="No fixed costs entered" value="—" muted italic />
+      }
+      <CatSubtotal label="Fixed Costs YTD" value={fixedYTD > 0 ? fmt(fixedYTD) : '—'} />
+
+      {spendingGroups.length === 0 && (
+        <>
+          <CatSectionLabel>Variable Spending</CatSectionLabel>
+          <CatRow label="No transactions yet" value="—" muted italic />
+          <CatSubtotal label="Variable Subtotal YTD" value="—" />
+        </>
+      )}
+      {spendingGroups.map(group => (
+        <div key={group.name}>
+          <CatSectionLabel>{group.name}</CatSectionLabel>
+          {group.entries.map(([cat, amt]) => (
+            <CatRow key={cat} label={cat} value={fmt(amt)} dot={group.hex} />
+          ))}
+          <CatSubtotal label={`${group.name} Subtotal`} value={fmt(group.total)} />
+        </div>
+      ))}
+
+      {customEntries.length > 0 && (
+        <>
+          <CatSectionLabel>Custom Categories</CatSectionLabel>
+          {customEntries.map(([cat, amt]) => (
+            <CatRow key={cat} label={cat} value={fmt(amt)} />
+          ))}
+          <CatSubtotal label="Custom Categories YTD" value={fmt(customTotal)} />
+        </>
+      )}
+
+      <CatSectionLabel>Savings</CatSectionLabel>
+      {savingsCatEntries.length > 0
+        ? savingsCatEntries.map(([cat, ytdAmt]) => (
+            <CatRow key={cat} label={cat}
+              value={ytdAmt > 0 ? fmt(ytdAmt) : '—'}
+              colorClass="text-[#0D7377]" />
+          ))
+        : <CatRow label="No savings entries" value="—" muted italic />
+      }
+      <CatSubtotal label="Total Savings YTD"
+        value={savingsYTD > 0 ? fmt(savingsYTD) : '—'}
+        colorClass="text-[#0D7377]" />
+    </div>
+  )
+}
+
 // ─── FixedCostsPage ───────────────────────────────────────────────────────────
 
 function FixedCostsPage({ fixedCosts, onAdd, onDelete }) {
@@ -504,7 +661,7 @@ function FixedCostsPage({ fixedCosts, onAdd, onDelete }) {
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors bg-white"
             >
               <option value="">Select category…</option>
-              {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return').map(c => (
+              {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
@@ -567,25 +724,155 @@ function FixedCostsPage({ fixedCosts, onAdd, onDelete }) {
   )
 }
 
+// ─── SavingsPage ─────────────────────────────────────────────────────────────
+
+function SavingsPage({ savingsEntries, onAdd, onDelete }) {
+  const [name, setName]         = useState('')
+  const [amount, setAmount]     = useState('')
+  const [category, setCategory] = useState('')
+
+  function handleAdd() {
+    const parsed = parseFloat(amount)
+    if (!name.trim() || !parsed || !category) return
+    onAdd({ name: name.trim(), amount: parsed, category })
+    setName('')
+    setAmount('')
+    setCategory('')
+  }
+
+  const monthlyTotal = savingsEntries.reduce((s, c) => s + c.amount, 0)
+
+  return (
+    <div className="max-w-2xl">
+
+      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
+        <h2 className="text-sm font-semibold text-gray-800 mb-5">Add Savings Allocation</h2>
+        <div className="flex gap-3 items-end flex-wrap">
+
+          <div className="flex-1 min-w-40">
+            <label className="block text-xs text-gray-500 mb-1.5">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              placeholder="e.g. RRSP contribution"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors"
+            />
+          </div>
+
+          <div className="w-40">
+            <label className="block text-xs text-gray-500 mb-1.5">Amount / month</label>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
+              <span className="px-2.5 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
+              <input
+                type="number"
+                min="0"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                placeholder="0"
+                className="flex-1 px-2.5 py-2.5 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+          </div>
+
+          <div className="w-52">
+            <label className="block text-xs text-gray-500 mb-1.5">Type</label>
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors bg-white"
+            >
+              <option value="">Select type…</option>
+              {SAVINGS_CATS.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={handleAdd}
+            disabled={!name.trim() || !amount || !category}
+            className="px-5 py-2.5 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Add
+          </button>
+
+        </div>
+      </div>
+
+      {savingsEntries.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+          <p className="text-sm text-gray-400">No savings allocations yet — add your first above</p>
+          <p className="text-xs text-gray-300 mt-1">Track where your savings go each month (RRSP, TFSA, investments, etc.)</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+            <p className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide">Monthly Savings Allocations</p>
+            <p className="text-xs text-gray-400">{savingsEntries.length} item{savingsEntries.length !== 1 ? 's' : ''}</p>
+          </div>
+          {savingsEntries.map(entry => {
+            const hex = CATEGORY_COLOR[entry.category] || '#14A085'
+            return (
+              <div key={entry.id} className="flex items-center gap-4 px-5 py-3 border-b border-gray-50 last:border-0">
+                <span className="flex-1 text-sm text-gray-700 font-medium">{entry.name}</span>
+                <span
+                  className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0"
+                  style={{ backgroundColor: hex + '1a', color: hex }}
+                >
+                  {entry.category}
+                </span>
+                <span className="text-sm font-semibold text-[#0D7377] tabular-nums w-24 text-right shrink-0">
+                  {fmt(entry.amount)}
+                </span>
+                <button
+                  onClick={() => onDelete(entry.id)}
+                  className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 ml-1"
+                  title="Remove"
+                >
+                  ✕
+                </button>
+              </div>
+            )
+          })}
+          <div className="px-5 py-3 bg-[#F0FDF9]/60 flex justify-between items-center">
+            <span className="text-xs font-medium text-[#0D7377]">Monthly total</span>
+            <span className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(monthlyTotal)}</span>
+          </div>
+        </div>
+      )}
+
+    </div>
+  )
+}
+
 // ─── MonthlyDashboard ─────────────────────────────────────────────────────────
 
-function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts }) {
-  const monthTxns         = txns.filter(t => yearMonthOf(t.date) === APP_YEAR + '-' + selectedMonth)
-  const debits            = monthTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
-  const untagged          = monthTxns.filter(t => !t.category).length
+function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts, savingsEntries }) {
+  const monthTxns = txns.filter(t => yearMonthOf(t.date) === APP_YEAR + '-' + selectedMonth)
+  const allDebits = monthTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
+  const debits    = allDebits.filter(t => !isSaving(t.category))
+  const untagged  = monthTxns.filter(t => !t.category).length
+
   const txnSpent          = debits.reduce((sum, t) => sum + t.amount, 0)
   const fixedMonthlyTotal = fixedCosts.reduce((s, c) => s + c.amount, 0)
   const totalSpent        = txnSpent + fixedMonthlyTotal
 
-  const annualNet   = salary.gross > 0
+  const annualNet  = salary.gross > 0
     ? salary.gross * (1 - salary.taxRate / 100) - salary.deductions * 12
     : 0
-  const monthlyNet  = annualNet / 12
-  const saved       = monthlyNet > 0 ? monthlyNet - totalSpent : null
-  const savingsRate = monthlyNet > 0 ? ((monthlyNet - totalSpent) / monthlyNet) * 100 : null
+  const monthlyNet = annualNet / 12
 
-  const variableSpent = debits.filter(t => !FIXED_CATS.has(t.category)).reduce((s, t) => s + t.amount, 0)
-  const fixedFromTxns = debits.filter(t =>  FIXED_CATS.has(t.category)).reduce((s, t) => s + t.amount, 0)
+  // Savings = residual: Net Income − Fixed Costs − Variable Spending
+  const totalSavings = monthlyNet > 0 ? Math.max(0, monthlyNet - totalSpent) : 0
+  const savingsRate  = monthlyNet > 0 ? (totalSavings / monthlyNet) * 100 : null
+
+  // Savings entries breakdown
+  const savingsByCat       = savingsEntries.reduce((acc, e) => { acc[e.category] = (acc[e.category] || 0) + e.amount; return acc }, {})
+  const savingsEntriesTotal = savingsEntries.reduce((s, e) => s + e.amount, 0)
+  const savingsUnallocated  = Math.max(0, totalSavings - savingsEntriesTotal)
 
   return (
     <div className="flex gap-5">
@@ -596,7 +883,6 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
         {/* Income statement card */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-5">
 
-          {/* Net Income — light green background */}
           <div className="flex items-center justify-between px-5 py-3.5" style={{ backgroundColor: '#F0FDF4' }}>
             <span className="text-sm text-gray-600">Net Income</span>
             <span className={`text-sm font-semibold tabular-nums ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
@@ -606,19 +892,16 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
 
           <div className="border-t border-gray-200" />
 
-          {/* Fixed Costs */}
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
             <span className="text-sm text-gray-600">Fixed Costs</span>
             <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
           </div>
 
-          {/* Variable Spending */}
           <div className="flex items-center justify-between px-5 py-3.5">
             <span className="text-sm text-gray-600">Variable Spending</span>
             <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
           </div>
 
-          {/* Total Expenses — double top border */}
           <div className="flex items-center justify-between px-5 py-3.5 border-t-2 border-gray-200">
             <span className="text-sm font-semibold text-gray-700">Total Expenses</span>
             <span className="text-sm font-bold text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
@@ -626,25 +909,41 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
 
           <div className="border-t border-gray-200" />
 
-          {/* Net Savings */}
+          {/* Savings entries breakdown */}
+          {Object.entries(savingsByCat).map(([cat, amount]) => (
+            <div key={cat} className="flex items-center justify-between px-5 py-2.5 border-b border-gray-50" style={{ backgroundColor: '#F0FDF9' }}>
+              <span className="text-xs font-medium text-[#0D7377]">{cat}</span>
+              <span className="text-xs font-semibold text-[#0D7377] tabular-nums">{fmt(amount)}</span>
+            </div>
+          ))}
+          {savingsUnallocated > 0 && (
+            <div className="flex items-center justify-between px-5 py-2.5 border-b border-gray-50" style={{ backgroundColor: '#F0FDF9' }}>
+              <span className="text-xs font-medium text-[#0D7377]">Unallocated</span>
+              <span className="text-xs font-semibold text-[#0D7377] tabular-nums">{fmt(savingsUnallocated)}</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
-            <span className="text-sm font-semibold text-gray-700">Net Savings</span>
-            <span className={`text-sm font-bold tabular-nums ${saved === null ? 'text-gray-300' : saved >= 0 ? 'text-[#0D7377]' : 'text-red-500'}`}>
-              {saved === null ? '—' : (saved < 0 ? '−' : '') + fmt(Math.abs(saved))}
+            <span className="text-sm font-semibold text-gray-700">Total Savings</span>
+            <span className={`text-sm font-bold tabular-nums ${totalSavings > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
+              {totalSavings > 0 ? fmt(totalSavings) : '—'}
             </span>
           </div>
 
-          {/* Savings Rate */}
           <div className="flex items-center justify-between px-5 py-3.5">
             <span className="text-sm text-gray-500">Savings Rate</span>
-            <span className={`text-sm font-semibold tabular-nums ${savingsRate === null ? 'text-gray-300' : savingsRate >= 0 ? 'text-[#0D7377]' : 'text-red-400'}`}>
+            <span className={`text-sm font-semibold tabular-nums ${
+              savingsRate === null ? 'text-gray-300'
+              : savingsRate >= 20 ? 'text-[#0D7377]'
+              : savingsRate >= 10 ? 'text-amber-500'
+              : 'text-red-400'
+            }`}>
               {savingsRate === null ? '—' : savingsRate.toFixed(1) + '%'}
             </span>
           </div>
 
         </div>
 
-        {/* Untagged banner */}
         {untagged > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4 text-xs text-amber-700 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
@@ -714,18 +1013,44 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
               </div>
             </>
           )}
+
+          {savingsEntries.length > 0 && (
+            <>
+              <div className="border-t-2 border-gray-100 px-4 py-2.5 bg-[#F0FDF9]/80 flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide">Savings Allocations</span>
+                <span className="text-xs text-[#0D7377]/60">{savingsEntries.length} item{savingsEntries.length !== 1 ? 's' : ''}</span>
+              </div>
+              {savingsEntries.map((entry, i) => {
+                const hex = CATEGORY_COLOR[entry.category] || '#14A085'
+                return (
+                  <div key={entry.id} className={`flex items-center gap-4 px-4 py-2.5 border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-[#F0FDF9]/30'}`}>
+                    <span className="flex-1 text-sm text-gray-700">{entry.name}</span>
+                    <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
+                      {entry.category}
+                    </span>
+                    <span className="text-sm font-semibold text-[#0D7377] tabular-nums w-24 text-right shrink-0">
+                      {fmt(entry.amount)}
+                    </span>
+                  </div>
+                )
+              })}
+              <div className="border-t border-gray-100 px-4 py-3 bg-[#F0FDF9]/60 flex justify-between items-center">
+                <span className="text-xs font-medium text-[#0D7377]">Savings total</span>
+                <span className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(savingsEntriesTotal)}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Right panel */}
       <div className="w-72 shrink-0 space-y-4">
 
-        {/* Spending breakdown — merges fixed costs into category groups */}
         <div className="bg-white rounded-xl border border-gray-100 p-5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Breakdown</p>
 
           <div className="space-y-3">
-            {CATEGORY_GROUPS.map(group => {
+            {CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(group => {
               const txnTotal   = group.cats.reduce((s, cat) =>
                 s + debits.filter(t => t.category === cat).reduce((ss, t) => ss + t.amount, 0), 0
               )
@@ -757,27 +1082,26 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
 
           <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5">
             <div className="flex justify-between text-xs">
-              <span className="text-gray-500">Variable</span>
-              <span className="font-medium text-gray-800 tabular-nums">{fmt(variableSpent)}</span>
+              <span className="text-gray-500">Fixed costs</span>
+              <span className="font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-gray-500">Fixed (transactions)</span>
-              <span className="font-medium text-gray-800 tabular-nums">{fmt(fixedFromTxns)}</span>
+              <span className="text-gray-500">Variable</span>
+              <span className="font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
             </div>
-            {fixedMonthlyTotal > 0 && (
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Fixed costs</span>
-                <span className="font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
-              </div>
-            )}
             <div className="flex justify-between text-xs font-semibold pt-1.5 border-t border-gray-100">
-              <span className="text-gray-700">Total spent</span>
+              <span className="text-gray-700">Total expenses</span>
               <span className="text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
             </div>
+            {totalSavings > 0 && (
+              <div className="flex justify-between text-xs font-semibold text-[#0D7377]">
+                <span>Savings</span>
+                <span className="tabular-nums">{fmt(totalSavings)}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Bank connection */}
         <div className="bg-white rounded-xl border border-gray-100 p-5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Bank Connection</p>
           <div className="flex items-center gap-2">
@@ -808,7 +1132,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
   const incomeToDate = monthlyNet * monthIdx
 
   const debits = transactions.filter(t =>
-    t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category)
+    t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category) && !isSaving(t.category)
   )
   const spentToDate = debits
     .filter(t => {
@@ -826,7 +1150,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
       .map(t => yearMonthOf(t.date))
   ).size
 
-  const fixedMonthlyTotal = fixedCosts.reduce((s, c) => s + c.amount, 0)
+  const fixedMonthlyTotal = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + c.amount, 0)
 
   const avgMonthlySpend       = monthsWithSpendData > 0 ? spentToDate / monthsWithSpendData : null
   const monthlySavings        = monthlyNet > 0 && avgMonthlySpend !== null
@@ -983,57 +1307,48 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
 
 // ─── AnnualSummary ────────────────────────────────────────────────────────────
 
-const MAX_BAR_H = 140
-
-function AnnualSummary({ transactions, salary, fixedCosts }) {
+function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
   const gross            = salary.gross
   const taxAmount        = gross * (salary.taxRate / 100)
   const deductionsAnnual = salary.deductions * 12
   const annualNet        = gross > 0 ? gross - taxAmount - deductionsAnnual : 0
   const monthlyNet       = annualNet / 12
 
-  const fixedMonthlyTotal    = fixedCosts.reduce((s, c) => s + c.amount, 0)
+  const fixedMonthlyTotal    = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + c.amount, 0)
   const fixedAnnualProjected = fixedMonthlyTotal * 12
 
-  const debits = transactions.filter(t =>
+  const allDebitsAnn = transactions.filter(t =>
     t.type === 'debit' &&
     !EXCLUDE_FROM_TOTALS.has(t.category) &&
     yearMonthOf(t.date).slice(0, 4) === APP_YEAR
   )
+  const debits = allDebitsAnn.filter(t => !isSaving(t.category))
+
   const txnSpent       = debits.reduce((s, t) => s + t.amount, 0)
-  const monthsWithData = new Set(debits.map(t => yearMonthOf(t.date))).size
+  const monthsWithData = new Set(allDebitsAnn.map(t => yearMonthOf(t.date))).size
 
   const avgMonthlyVariable = monthsWithData > 0 ? txnSpent / monthsWithData : null
   const projectedVariable  = avgMonthlyVariable !== null ? avgMonthlyVariable * 12 : null
   const totalExpensesProj  = projectedVariable !== null ? fixedAnnualProjected + projectedVariable : null
-  const netSavingsProj     = annualNet > 0 && totalExpensesProj !== null ? annualNet - totalExpensesProj : null
-  const savingsRate        = annualNet > 0 && netSavingsProj !== null ? (netSavingsProj / annualNet) * 100 : null
 
-  // YTD figures (only count fixed costs for months that have transaction data)
-  const fixedYTD        = fixedMonthlyTotal * monthsWithData
-  const totalExpYTD     = txnSpent + fixedYTD
-  const incomeToDate    = monthlyNet * monthsWithData
-  const netSavingsYTD   = incomeToDate > 0 ? incomeToDate - totalExpYTD : null
-  const savingsRateYTD  = incomeToDate > 0 && netSavingsYTD !== null
-    ? (netSavingsYTD / incomeToDate) * 100
-    : null
+  // YTD figures — residual savings model
+  const fixedYTD         = fixedMonthlyTotal * monthsWithData
+  const totalExpYTD      = txnSpent + fixedYTD
+  const incomeToDate     = monthlyNet * monthsWithData
+  const totalSavingsYTD  = incomeToDate > 0 ? Math.max(0, incomeToDate - totalExpYTD) : null
+  const savingsRateYTD   = incomeToDate > 0 && totalSavingsYTD !== null ? (totalSavingsYTD / incomeToDate) * 100 : null
 
-  const monthlyTotals = MONTHS.map(m => {
+  // Projected savings (residual)
+  const projectedSavings = totalExpensesProj !== null ? Math.max(0, annualNet - totalExpensesProj) : null
+  const savingsRate      = annualNet > 0 && projectedSavings !== null ? (projectedSavings / annualNet) * 100 : null
+
+  const chartData = MONTHS.map(m => {
     const txnTotal = debits
       .filter(t => yearMonthOf(t.date) === APP_YEAR + '-' + m.id)
       .reduce((s, t) => s + t.amount, 0)
-    return txnTotal > 0 ? txnTotal + fixedMonthlyTotal : 0
+    const total = txnTotal > 0 ? txnTotal + fixedMonthlyTotal : 0
+    return { name: m.label.slice(0, 3), spend: total }
   })
-  const barsWithData  = monthlyTotals.filter(v => v > 0).length
-  const avgMonthlyBar = barsWithData > 0 ? monthlyTotals.reduce((s, v) => s + v, 0) / barsWithData : 0
-  const maxBarVal     = Math.max(...monthlyTotals, monthlyNet > 0 ? monthlyNet : 0, 1)
-
-  const incomeLineBottom = monthlyNet > 0 && maxBarVal > 0
-    ? 20 + Math.min((monthlyNet / maxBarVal) * MAX_BAR_H, MAX_BAR_H - 1)
-    : null
-  const avgLineBottom = avgMonthlyBar > 0 && maxBarVal > 0
-    ? 20 + Math.min((avgMonthlyBar / maxBarVal) * MAX_BAR_H, MAX_BAR_H - 1)
-    : null
 
   const ARC_LEN     = Math.PI * 70
   const clampedRate = savingsRate !== null ? Math.max(0, Math.min(100, savingsRate)) : 0
@@ -1067,19 +1382,13 @@ function AnnualSummary({ transactions, salary, fixedCosts }) {
           <div className="mt-3 h-[3px] w-7 rounded-full bg-red-400/70" />
         </div>
 
-        {/* Card 3: Net Savings YTD */}
+        {/* Card 3: Savings YTD */}
         <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-          <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Net Savings YTD</p>
-          <p className={`text-2xl font-bold tabular-nums ${
-            netSavingsYTD === null ? 'text-white/20'
-            : netSavingsYTD >= 0 ? 'text-white' : 'text-red-400'
-          }`}>
-            {netSavingsYTD === null
-              ? '—'
-              : (netSavingsYTD < 0 ? '−' : '') + fmt(Math.abs(netSavingsYTD))}
+          <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Savings YTD</p>
+          <p className={`text-2xl font-bold tabular-nums ${totalSavingsYTD > 0 ? 'text-white' : 'text-white/20'}`}>
+            {totalSavingsYTD > 0 ? fmt(totalSavingsYTD) : '—'}
           </p>
-          <div className="mt-3 h-[3px] w-7 rounded-full"
-            style={{ backgroundColor: netSavingsYTD === null ? '#374151' : netSavingsYTD >= 0 ? '#0D7377' : '#EF4444' }} />
+          <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: totalSavingsYTD > 0 ? '#14A085' : '#374151' }} />
         </div>
 
         {/* Card 4: Savings Rate YTD */}
@@ -1150,14 +1459,14 @@ function AnnualSummary({ transactions, salary, fixedCosts }) {
         {/* Savings rows */}
         <div className="border-t border-gray-100 divide-y divide-gray-50 pt-1">
           <div className="flex justify-between items-center py-3">
-            <span className="text-sm font-semibold text-gray-700">Net Savings (projected)</span>
+            <span className="text-sm font-semibold text-gray-700">Total Savings (projected)</span>
             <span className={`text-xl font-bold tabular-nums ${
-              netSavingsProj === null ? 'text-gray-300'
-              : netSavingsProj >= 0 ? 'text-[#0D7377]' : 'text-red-500'
+              projectedSavings === null ? 'text-gray-300'
+              : projectedSavings >= 0 ? 'text-[#0D7377]' : 'text-red-500'
             }`}>
-              {netSavingsProj === null
+              {projectedSavings === null
                 ? '—'
-                : (netSavingsProj < 0 ? '−' : '') + fmt(Math.abs(netSavingsProj))}
+                : (projectedSavings < 0 ? '−' : '') + fmt(Math.abs(projectedSavings))}
             </span>
           </div>
           <div className="flex justify-between items-center py-3">
@@ -1179,75 +1488,28 @@ function AnnualSummary({ transactions, salary, fixedCosts }) {
 
         {/* Bar chart */}
         <div className="flex-1 bg-white rounded-xl border border-gray-100 p-5">
-          <div className="flex items-center justify-between mb-5">
-            <p className="text-sm font-semibold text-gray-800">Monthly Spending Overview</p>
-            <div className="flex items-center gap-4 text-[10px] text-gray-400">
-              {monthlyNet > 0 && (
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 shrink-0" style={{ borderTop: '2px dashed #22C55E', opacity: 0.7 }} />
-                  Monthly income
-                </span>
-              )}
-              {avgMonthlyBar > 0 && (
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-5 shrink-0 border-t border-dashed border-gray-400" />
-                  Avg spend
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="relative" style={{ height: `${MAX_BAR_H + 20}px` }}>
-
-            {/* Gridlines */}
-            {[25, 50, 75].map(pct => (
-              <div key={pct} className="absolute left-0 right-0 border-t border-gray-100 pointer-events-none"
-                style={{ bottom: `${20 + (pct / 100) * MAX_BAR_H}px` }}
-              />
-            ))}
-
-            {/* Monthly net income reference line */}
-            {incomeLineBottom !== null && (
-              <div className="absolute left-0 right-0 pointer-events-none"
-                style={{ bottom: `${incomeLineBottom}px`, borderTop: '2px dashed #22C55E', opacity: 0.55 }}
-              />
-            )}
-
-            {/* Avg monthly spending reference line */}
-            {avgLineBottom !== null && (
-              <div className="absolute left-0 right-0 pointer-events-none"
-                style={{ bottom: `${avgLineBottom}px`, borderTop: '1px dashed #9CA3AF', opacity: 0.7 }}
-              />
-            )}
-
-            {/* Bars */}
-            <div className="absolute left-0 right-0 flex gap-1.5 items-end"
-              style={{ bottom: '20px', height: `${MAX_BAR_H}px` }}>
-              {MONTHS.map((m, i) => {
-                const val  = monthlyTotals[i]
-                const barH = maxBarVal > 0 ? (val / maxBarVal) * MAX_BAR_H : 0
-                return (
-                  <div key={m.id} className="flex-1 flex flex-col items-center justify-end h-full">
-                    {val > 0 && (
-                      <span className="text-[8px] text-gray-400 tabular-nums leading-none mb-0.5">{fmtK(val)}</span>
-                    )}
-                    <div className="w-full rounded-t-sm"
-                      style={{ height: `${barH}px`, backgroundColor: val > 0 ? '#0D7377' : 'transparent' }}
-                    />
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Month labels */}
-            <div className="absolute bottom-0 left-0 right-0 flex gap-1.5">
-              {MONTHS.map(m => (
-                <div key={m.id} className="flex-1 flex items-center justify-center" style={{ height: '20px' }}>
-                  <span className="text-[9px] text-gray-400">{m.label.slice(0, 3)}</span>
-                </div>
+          <p className="text-sm font-semibold text-gray-800 mb-3">Monthly Spending Overview</p>
+          <BarChart width={520} height={220} data={chartData} margin={{ top: 20, right: 10, left: 10, bottom: 0 }}>
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+            <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={40} />
+            <Tooltip
+              formatter={v => [fmt(v), 'Spend']}
+              contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }}
+              cursor={{ fill: '#F3F4F6' }}
+            />
+            <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+            <Bar
+              dataKey="spend"
+              name="Monthly Spend"
+              fill="#0D7377"
+              radius={[3, 3, 0, 0]}
+              label={{ position: 'top', fontSize: 9, fill: '#9CA3AF', formatter: v => v > 0 ? fmtK(v) : '' }}
+            >
+              {chartData.map((entry, i) => (
+                <Cell key={i} fill={entry.spend > 0 ? '#0D7377' : 'transparent'} />
               ))}
-            </div>
-          </div>
+            </Bar>
+          </BarChart>
         </div>
 
         {/* Savings rate gauge */}
@@ -1759,6 +2021,7 @@ export default function App() {
   const [categoryMemory, setCategoryMemory] = useState({})
   const [transactions, setTransactions]     = useState([])
   const [fixedCosts, setFixedCosts]         = useState([])
+  const [savingsEntries, setSavingsEntries] = useState([])
   const [dedupKeyCache, setDedupKeyCache]   = useState(new Set())
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
   const dataLoadedFor = useRef(null)
@@ -1793,26 +2056,39 @@ export default function App() {
           supabase.from('salary_settings').select('*').eq('user_id', user.id).maybeSingle(),
         ])
 
-        if (txnRes.data) {
-          const txns = txnRes.data.map(r => ({
-            id: r.id, date: r.date, description: r.description,
-            amount: r.amount, type: r.type, category: r.category ?? '',
-            fromMemory: r.from_memory ?? false,
-          }))
-          setTransactions(txns)
-          setDedupKeyCache(new Set(txns.map(dedupKey)))
-        }
-
+        let mem = {}
         if (memRes.data) {
-          const mem = {}
           memRes.data.forEach(r => { mem[r.key] = r.category })
           setCategoryMemory(mem)
         }
 
+        if (txnRes.data) {
+          const txns = txnRes.data.map(r => {
+            const descKey    = (r.description ?? '').toUpperCase().trim()
+            const remembered = !r.category && mem[descKey]
+            return {
+              id: r.id, date: r.date, description: r.description,
+              amount: r.amount, type: r.type,
+              category:   remembered ? mem[descKey] : (r.category ?? ''),
+              fromMemory: remembered ? true : (r.from_memory ?? false),
+            }
+          })
+          setTransactions(txns)
+          setDedupKeyCache(new Set(txns.map(dedupKey)))
+
+          // Persist auto-applied categories back to Supabase (fire-and-forget)
+          const autoTagged = txns.filter(t => t.fromMemory && !txnRes.data.find(r => r.id === t.id)?.category)
+          autoTagged.forEach(t => {
+            supabase.from('transactions')
+              .update({ category: t.category, from_memory: true })
+              .eq('id', t.id).eq('user_id', user.id)
+          })
+        }
+
         if (fixedRes.data) {
-          setFixedCosts(fixedRes.data.map(r => ({
-            id: r.id, name: r.name, amount: r.amount, category: r.category,
-          })))
+          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category }))
+          setFixedCosts(rows.filter(r => !isSaving(r.category)))
+          setSavingsEntries(rows.filter(r => isSaving(r.category)))
         }
 
         if (salaryRes.data) {
@@ -1830,6 +2106,7 @@ export default function App() {
     }
 
     loadData()
+    return () => { dataLoadedFor.current = null }
   }, [user])
 
   async function addFixedCost(cost) {
@@ -1845,23 +2122,65 @@ export default function App() {
 
   async function deleteFixedCost(id) {
     setFixedCosts(prev => prev.filter(c => c.id !== id))
-    supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
+    await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
+  }
+
+  async function addSavingsEntry(entry) {
+    const { data, error } = await supabase
+      .from('fixed_costs')
+      .insert({ user_id: user.id, name: entry.name, amount: entry.amount, category: entry.category })
+      .select()
+      .single()
+    if (!error && data) {
+      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category }])
+    }
+  }
+
+  async function deleteSavingsEntry(id) {
+    setSavingsEntries(prev => prev.filter(e => e.id !== id))
+    await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
   }
 
   async function setCategory(id, category) {
-    const t = transactions.find(t => t.id === id)
-    setTransactions(prev => prev.map(t => t.id === id ? { ...t, category } : t))
-    supabase.from('transactions').update({ category }).eq('id', id).eq('user_id', user.id)
-    if (t && category) {
-      const key = extractKey(t.description)
-      if (key) {
-        const next = { ...categoryMemory, [key]: category }
-        setCategoryMemory(next)
-        supabase.from('category_memory').upsert(
-          { user_id: user.id, key, category },
-          { onConflict: 'user_id,key' }
-        )
-      }
+    const t = transactions.find(tx => tx.id === id)
+    if (!t) return
+
+    const descKey = t.description.toUpperCase().trim()
+
+    // Find all other untagged transactions with the same description
+    const similar = transactions.filter(
+      tx => tx.id !== id && !tx.category && tx.description.toUpperCase().trim() === descKey
+    )
+
+    // Apply category to the target + all matching untagged in one state update
+    const toUpdate = new Set([id, ...similar.map(tx => tx.id)])
+    setTransactions(prev => prev.map(tx =>
+      toUpdate.has(tx.id) ? { ...tx, category, fromMemory: tx.id !== id } : tx
+    ))
+
+    // Supabase: update the manually tagged row
+    supabase.from('transactions').update({ category }).eq('id', id).eq('user_id', user.id).then()
+
+    // Supabase: batch update similar untagged rows
+    if (similar.length > 0) {
+      supabase.from('transactions')
+        .update({ category, from_memory: true })
+        .in('id', similar.map(tx => tx.id))
+        .eq('user_id', user.id)
+        .then()
+
+      clearTimeout(setCategory._timer)
+      setToast({ msg: `Auto-tagged ${similar.length} similar transaction${similar.length !== 1 ? 's' : ''}` })
+      setCategory._timer = setTimeout(() => setToast(null), 4000)
+    }
+
+    // Persist to category_memory using full description as key
+    if (category) {
+      setCategoryMemory(prev => ({ ...prev, [descKey]: category }))
+      supabase.from('category_memory').upsert(
+        { user_id: user.id, key: descKey, category },
+        { onConflict: 'user_id,key' }
+      )
     }
   }
 
@@ -1902,22 +2221,57 @@ export default function App() {
   function handleFile(file) {
     const reader = new FileReader()
     reader.onload = async e => {
+      // Parse and apply category memory (full description key) to every row
       const incoming = parseCSV(e.target.result).map(t => {
-        if (t.type === 'credit') return t
-        const key        = extractKey(t.description)
-        const remembered = key ? categoryMemory[key] : null
-        return { ...t, category: remembered || t.category, fromMemory: !!remembered }
+        const descKey    = t.description.toUpperCase().trim()
+        const remembered = categoryMemory[descKey]
+        return { ...t, category: remembered || t.category || '', fromMemory: !!remembered }
       })
 
-      const fresh   = incoming.filter(t => !dedupKeyCache.has(dedupKey(t)))
-      const skipped = incoming.length - fresh.length
+      if (incoming.length === 0) return
 
-      console.log(`[import] ${fresh.length} added, ${skipped} skipped (duplicates)`)
-      setToast({ added: fresh.length, skipped })
+      // Stage 1: fast filter via in-memory cache
+      const passedCache = incoming.filter(t => !dedupKeyCache.has(dedupKey(t)))
+
+      // Stage 2: authoritative Supabase check for rows that passed the cache
+      // (catches stale-cache edge cases without fetching the entire history)
+      let fresh      = passedCache
+      let dbExisting = []
+      if (passedCache.length > 0) {
+        const dates = [...new Set(passedCache.map(t => t.date))]
+        const { data } = await supabase
+          .from('transactions')
+          .select('date, amount, description')
+          .eq('user_id', user.id)
+          .in('date', dates)
+
+        dbExisting = data || []
+        const dbKeys = new Set(
+          dbExisting.map(r => `${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
+        )
+        fresh = passedCache.filter(t => !dbKeys.has(dedupKey(t)))
+      }
+
+      const skipped = incoming.length - fresh.length
+      const importMsg = fresh.length > 0
+        ? `Added ${fresh.length} new transaction${fresh.length !== 1 ? 's' : ''}${skipped > 0 ? `, ${skipped} already existed` : ''}`
+        : `No new transactions — all ${skipped} already existed`
+
+      setToast({ msg: importMsg })
       clearTimeout(handleFile._toastTimer)
       handleFile._toastTimer = setTimeout(() => setToast(null), 4000)
 
-      if (fresh.length === 0) return
+      // Patch cache with any DB-discovered keys we were missing, then bail
+      if (fresh.length === 0) {
+        if (dbExisting.length > 0) {
+          const nextCache = new Set(dedupKeyCache)
+          dbExisting.forEach(r =>
+            nextCache.add(`${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
+          )
+          setDedupKeyCache(nextCache)
+        }
+        return
+      }
 
       const { data: inserted, error } = await supabase
         .from('transactions')
@@ -1940,7 +2294,11 @@ export default function App() {
         fromMemory: r.from_memory ?? false,
       }))
 
+      // Update cache: merge DB-discovered existing keys + newly inserted keys
       const nextCache = new Set(dedupKeyCache)
+      dbExisting.forEach(r =>
+        nextCache.add(`${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
+      )
       insertedTxns.forEach(t => nextCache.add(dedupKey(t)))
       setDedupKeyCache(nextCache)
 
@@ -1984,6 +2342,7 @@ export default function App() {
     transactions: 'All Transactions',
     salary:       'Salary',
     fixed:        'Fixed Costs',
+    savings:      'Savings',
     categories:   'Categories',
     annual:       'Annual Summary',
     settings:     'Settings',
@@ -2089,11 +2448,7 @@ export default function App() {
         {toast && (
           <div className="shrink-0 mx-6 mt-3">
             <div className="flex items-center gap-2 bg-[#0F3460] text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow">
-              <span>
-                {toast.added > 0
-                  ? `Added ${toast.added} new transaction${toast.added !== 1 ? 's' : ''}${toast.skipped > 0 ? `, ${toast.skipped} already existed` : ''}`
-                  : `No new transactions — all ${toast.skipped} already existed`}
-              </span>
+              <span>{toast.msg}</span>
               <button onClick={() => setToast(null)} className="ml-auto text-white/60 hover:text-white leading-none">✕</button>
             </div>
           </div>
@@ -2128,6 +2483,7 @@ export default function App() {
               setCategory={setCategory}
               salary={salary}
               fixedCosts={fixedCosts}
+              savingsEntries={savingsEntries}
             />
           )}
 
@@ -2152,48 +2508,11 @@ export default function App() {
           )}
 
           {activePage === 'categories' && (
-            <div className="grid grid-cols-3 gap-4">
-              {CATEGORY_GROUPS.map(group => {
-                const allDebits  = transactions.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
-                const groupTotal = group.cats.reduce((sum, cat) =>
-                  sum + allDebits.filter(t => t.category === cat).reduce((s, t) => s + t.amount, 0), 0
-                )
-                return (
-                  <div key={group.name} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: group.hex }} />
-                        <p className="text-sm font-semibold text-gray-800">{group.name}</p>
-                      </div>
-                      <span className="text-[11px] text-gray-400">{group.cats.length} cats</span>
-                    </div>
-                    <div className="space-y-3">
-                      {group.cats.map(cat => {
-                        const catTotal = allDebits.filter(t => t.category === cat).reduce((s, t) => s + t.amount, 0)
-                        const pct = groupTotal > 0 ? (catTotal / groupTotal) * 100 : 0
-                        return (
-                          <div key={cat}>
-                            <div className="flex justify-between text-xs mb-1.5">
-                              <span className={catTotal > 0 ? 'text-gray-600' : 'text-gray-300'}>{cat}</span>
-                              <span className={`tabular-nums ${catTotal > 0 ? 'text-gray-800 font-medium' : 'text-gray-300'}`}>
-                                {fmt(catTotal)}
-                              </span>
-                            </div>
-                            <div className="h-[3px] bg-gray-100 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: group.hex }} />
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center">
-                      <span className="text-xs text-gray-400">Group total</span>
-                      <span className="text-sm font-semibold text-gray-900">{fmt(groupTotal)}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            <CategoriesPage
+              transactions={transactions}
+              fixedCosts={fixedCosts}
+              savingsEntries={savingsEntries}
+            />
           )}
 
           {activePage === 'fixed' && (
@@ -2204,8 +2523,21 @@ export default function App() {
             />
           )}
 
+          {activePage === 'savings' && (
+            <SavingsPage
+              savingsEntries={savingsEntries}
+              onAdd={addSavingsEntry}
+              onDelete={deleteSavingsEntry}
+            />
+          )}
+
           {activePage === 'annual' && (
-            <AnnualSummary transactions={transactions} salary={salary} fixedCosts={fixedCosts} />
+            <AnnualSummary
+              transactions={transactions}
+              salary={salary}
+              fixedCosts={fixedCosts}
+              savingsEntries={savingsEntries}
+            />
           )}
 
           {activePage === 'settings' && (
