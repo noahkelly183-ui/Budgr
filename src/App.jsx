@@ -1330,6 +1330,26 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
   const projectedSavings = totalExpensesProj !== null ? Math.max(0, annualNet - totalExpensesProj) : null
   const savingsRate      = annualNet > 0 && projectedSavings !== null ? (projectedSavings / annualNet) * 100 : null
 
+  // Per-category breakdown for income statement
+  const fixedCostItems = fixedCosts.filter(c => !isSaving(c.category))
+  const varByCategory = {}
+  for (const t of debits) {
+    const cat = t.category || 'Uncategorized'
+    varByCategory[cat] = (varByCategory[cat] || 0) + t.amount
+  }
+  const varGroups = CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(g => ({
+    ...g,
+    entries: g.cats
+      .filter(cat => varByCategory[cat] > 0)
+      .map(cat => ({ cat, amt: varByCategory[cat] }))
+      .sort((a, b) => b.amt - a.amt),
+  })).filter(g => g.entries.length > 0)
+  const knownCats = new Set(CATEGORIES)
+  const customVarEntries = Object.entries(varByCategory)
+    .filter(([cat]) => !knownCats.has(cat))
+    .map(([cat, amt]) => ({ cat, amt }))
+    .sort((a, b) => b.amt - a.amt)
+
   const chartData = MONTHS.map(m => {
     const txnTotal = debits
       .filter(t => yearMonthOf(t.date) === APP_YEAR + '-' + m.id)
@@ -1468,6 +1488,97 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
               {savingsRate === null ? '—' : savingsRate.toFixed(1) + '%'}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* YTD Income Statement */}
+      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
+        <h2 className="text-sm font-semibold text-gray-800 mb-4">
+          YTD Income Statement — {APP_YEAR}
+          {monthsWithData > 0 && <span className="ml-2 text-xs font-normal text-gray-400">({monthsWithData} mo)</span>}
+        </h2>
+
+        {/* Income */}
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1">Income</p>
+        <div className="flex justify-between items-center py-2 border-b border-gray-50">
+          <span className="text-sm text-gray-600">Net Income YTD</span>
+          <span className="text-sm font-medium text-gray-800 tabular-nums">{incomeToDate > 0 ? fmt(incomeToDate) : '—'}</span>
+        </div>
+        <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
+          <span className="text-sm font-semibold text-gray-700">Total Income</span>
+          <span className="text-sm font-bold text-gray-900 tabular-nums">{incomeToDate > 0 ? fmt(incomeToDate) : '—'}</span>
+        </div>
+
+        {/* Fixed Costs */}
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1">Fixed Costs</p>
+        {fixedCostItems.length > 0
+          ? fixedCostItems.map(c => (
+              <div key={c.id} className="flex justify-between items-center py-2 border-b border-gray-50">
+                <span className="text-sm text-gray-600">{c.name}</span>
+                <span className="text-sm font-medium text-gray-800 tabular-nums">{monthsWithData > 0 ? fmt(c.amount * monthsWithData) : '—'}</span>
+              </div>
+            ))
+          : <div className="py-2"><span className="text-sm italic text-gray-400">No fixed costs entered</span></div>
+        }
+        <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
+          <span className="text-sm font-semibold text-gray-700">Fixed Subtotal</span>
+          <span className="text-sm font-bold text-gray-900 tabular-nums">{fixedYTD > 0 ? fmt(fixedYTD) : '—'}</span>
+        </div>
+
+        {/* Variable Spending — by group */}
+        {varGroups.length === 0 && customVarEntries.length === 0 && (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1">Variable Spending</p>
+            <div className="py-2"><span className="text-sm italic text-gray-400">No transactions yet</span></div>
+            <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
+              <span className="text-sm font-semibold text-gray-700">Variable Subtotal</span>
+              <span className="text-sm font-bold text-gray-900 tabular-nums">—</span>
+            </div>
+          </>
+        )}
+        {varGroups.map(g => (
+          <div key={g.name}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1 pt-0">{g.name}</p>
+            {g.entries.map(({ cat, amt }) => (
+              <div key={cat} className="flex items-center py-2 border-b border-gray-50">
+                <span className="w-2 h-2 rounded-full shrink-0 mr-2.5" style={{ backgroundColor: g.hex }} />
+                <span className="text-sm text-gray-600 flex-1">{cat}</span>
+                <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(amt)}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+        {customVarEntries.length > 0 && (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1 pt-0">Custom</p>
+            {customVarEntries.map(({ cat, amt }) => (
+              <div key={cat} className="flex justify-between items-center py-2 border-b border-gray-50">
+                <span className="text-sm text-gray-600">{cat}</span>
+                <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(amt)}</span>
+              </div>
+            ))}
+          </>
+        )}
+        {(varGroups.length > 0 || customVarEntries.length > 0) && (
+          <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
+            <span className="text-sm font-semibold text-gray-700">Variable Subtotal</span>
+            <span className="text-sm font-bold text-gray-900 tabular-nums">{txnSpent > 0 ? fmt(txnSpent) : '—'}</span>
+          </div>
+        )}
+
+        {/* Totals + Net Savings */}
+        <div className="flex justify-between items-center py-2.5 border-t border-gray-200">
+          <span className="text-sm font-semibold text-gray-700">Total Expenses YTD</span>
+          <span className="text-sm font-bold text-gray-900 tabular-nums">{totalExpYTD > 0 ? fmt(totalExpYTD) : '—'}</span>
+        </div>
+        <div className="flex justify-between items-center py-3.5 border-t-4 border-gray-800 mt-1">
+          <span className="text-sm font-bold text-gray-800">Net Savings YTD</span>
+          <span className={`text-xl font-bold tabular-nums ${
+            totalSavingsYTD === null ? 'text-gray-300'
+            : totalSavingsYTD >= 0 ? 'text-[#0D7377]' : 'text-red-500'
+          }`}>
+            {totalSavingsYTD === null ? '—' : fmt(totalSavingsYTD)}
+          </span>
         </div>
       </div>
 
