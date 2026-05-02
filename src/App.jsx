@@ -2092,6 +2092,7 @@ export default function App() {
           setSavingsEntries(rows.filter(r => isSaving(r.category)))
         }
 
+        console.log('[budgr] salary load:', salaryRes.data, salaryRes.error)
         const salaryRow = salaryRes.data?.[0]
         if (salaryRow) {
           setSalary({
@@ -2331,14 +2332,25 @@ export default function App() {
     clearTimeout(salaryTimerRef.current)
     salaryTimerRef.current = setTimeout(async () => {
       const payload = { gross: next.gross, tax_rate: next.taxRate, deductions: next.deductions }
-      const { data: updated, error: updateErr } = await supabase
-        .from('salary_settings').update(payload).eq('user_id', user.id).select()
-      if (updateErr) { console.error('[budgr] salary update failed:', updateErr); return }
-      if (!updated?.length) {
-        const { error: insertErr } = await supabase
+      console.log('[budgr] salary save attempt:', payload)
+
+      const { data: existing, error: selectErr } = await supabase
+        .from('salary_settings').select('id').eq('user_id', user.id).limit(1)
+      console.log('[budgr] salary existing row:', existing, selectErr)
+
+      let error
+      if (existing?.length) {
+        const { error: e } = await supabase
+          .from('salary_settings').update(payload).eq('id', existing[0].id)
+        error = e
+        console.log('[budgr] salary update result:', e)
+      } else {
+        const { error: e } = await supabase
           .from('salary_settings').insert({ user_id: user.id, ...payload })
-        if (insertErr) console.error('[budgr] salary insert failed:', insertErr)
+        error = e
+        console.log('[budgr] salary insert result:', e)
       }
+      if (error) console.error('[budgr] salary save failed:', error)
     }, 600)
   }
 
