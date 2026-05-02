@@ -2327,30 +2327,27 @@ export default function App() {
   function handleFile(file) {
     const reader = new FileReader()
     reader.onload = async e => {
-      // Parse and apply category memory (full description key) to every row
+      // 1. Parse + apply category_memory to all incoming rows
       const incoming = parseCSV(e.target.result).map(t => {
         const descKey    = t.description.toUpperCase().trim()
         const remembered = categoryMemory[descKey]
         return { ...t, category: remembered || t.category || '', fromMemory: !!remembered }
       })
-
       if (incoming.length === 0) return
 
-      // Stage 1: fast filter via in-memory cache
+      // 2. Stage 1 — fast dedup via in-memory cache
       const passedCache = incoming.filter(t => !dedupKeyCache.has(dedupKey(t)))
 
-      // Stage 2: authoritative Supabase check for rows that passed the cache
-      // (catches stale-cache edge cases without fetching the entire history)
+      // 3. Stage 2 — authoritative Supabase dedup; also fetch existing categories for fallback
       let fresh      = passedCache
       let dbExisting = []
       if (passedCache.length > 0) {
         const dates = [...new Set(passedCache.map(t => t.date))]
         const { data } = await supabase
           .from('transactions')
-          .select('date, amount, description')
+          .select('date, amount, description, category')
           .eq('user_id', user.id)
           .in('date', dates)
-
         dbExisting = data || []
         const dbKeys = new Set(
           dbExisting.map(r => `${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
@@ -2359,15 +2356,8 @@ export default function App() {
       }
 
       const skipped = incoming.length - fresh.length
-      const importMsg = fresh.length > 0
-        ? `Added ${fresh.length} new transaction${fresh.length !== 1 ? 's' : ''}${skipped > 0 ? `, ${skipped} already existed` : ''}`
-        : `No new transactions — all ${skipped} already existed`
 
-      setToast({ msg: importMsg })
-      clearTimeout(handleFile._toastTimer)
-      handleFile._toastTimer = setTimeout(() => setToast(null), 4000)
-
-      // Patch cache with any DB-discovered keys we were missing, then bail
+      // All dupes — patch cache and bail
       if (fresh.length === 0) {
         if (dbExisting.length > 0) {
           const nextCache = new Set(dedupKeyCache)
@@ -2376,12 +2366,48 @@ export default function App() {
           )
           setDedupKeyCache(nextCache)
         }
+        setToast({ msg: `No new transactions — all ${skipped} already existed` })
+        clearTimeout(handleFile._toastTimer)
+        handleFile._toastTimer = setTimeout(() => setToast(null), 4000)
         return
       }
 
+      // 4. Build description→category fallback from the DB rows we already fetched
+      const catByDesc = {}
+      dbExisting.forEach(r => {
+        if (r.category) catByDesc[r.description.toUpperCase().trim()] = r.category
+      })
+
+      // 4b. For fresh rows still missing a category, query DB across all dates by description
+      const untaggedDescs = [...new Set(fresh.filter(t => !t.category).map(t => t.description))]
+      if (untaggedDescs.length > 0) {
+        const { data: catRows } = await supabase
+          .from('transactions')
+          .select('description, category')
+          .eq('user_id', user.id)
+          .not('category', 'is', null)
+          .in('description', untaggedDescs.slice(0, 100))
+        if (catRows) {
+          catRows.forEach(r => {
+            const key = r.description.toUpperCase().trim()
+            if (!catByDesc[key]) catByDesc[key] = r.category
+          })
+        }
+      }
+
+      // 5. Apply fallback — never leave a row untagged if any source has a category
+      const readyToInsert = fresh.map(t => {
+        if (t.category) return t
+        const fallback = catByDesc[t.description.toUpperCase().trim()]
+        return fallback ? { ...t, category: fallback, fromMemory: true } : t
+      })
+
+      const autoTagged = readyToInsert.filter(t => t.category).length
+
+      // 6. Insert
       const { data: inserted, error } = await supabase
         .from('transactions')
-        .insert(fresh.map(t => ({
+        .insert(readyToInsert.map(t => ({
           user_id:     user.id,
           date:        t.date,
           description: t.description,
@@ -2391,8 +2417,12 @@ export default function App() {
           from_memory: t.fromMemory || false,
         })))
         .select()
-
       if (error) { console.error('[import] insert failed:', error); return }
+
+      // 7. Summary toast
+      setToast({ msg: `${fresh.length} new transaction${fresh.length !== 1 ? 's' : ''} imported, ${autoTagged} auto-tagged, ${skipped} already existed` })
+      clearTimeout(handleFile._toastTimer)
+      handleFile._toastTimer = setTimeout(() => setToast(null), 5000)
 
       const insertedTxns = inserted.map(r => ({
         id: r.id, date: r.date, description: r.description,
