@@ -120,6 +120,7 @@ const NAV_SECTIONS = [
   {
     heading: 'OVERVIEW',
     items: [
+      { id: 'get-started',  label: 'Get Started' },
       { id: 'dashboard',    label: 'Dashboard' },
       { id: 'transactions', label: 'Transactions' },
       { id: 'salary',       label: 'Salary' },
@@ -1664,95 +1665,158 @@ function LoadingSpinner() {
   )
 }
 
-// ─── OnboardingScreen ────────────────────────────────────────────────────────
+// ─── GetStartedPage ───────────────────────────────────────────────────────────
 
-const ONBOARDING_STEPS = [
-  {
-    num: 1,
-    title: 'Set your salary',
-    desc: 'Add your income so we can calculate your savings rate.',
-    label: 'Set up salary →',
-    page: 'salary',
-    icon: (
-      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="12" y1="1" x2="12" y2="23" />
-        <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-      </svg>
-    ),
-  },
-  {
-    num: 2,
-    title: 'Add fixed costs',
-    desc: 'Add recurring costs like rent and loans that don\'t show on your credit card.',
-    label: 'Add fixed costs →',
-    page: 'fixed',
-    icon: (
-      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    ),
-  },
-  {
-    num: 3,
-    title: 'Import transactions',
-    desc: 'Download your bank CSV and import your transactions to start tracking.',
-    label: 'Import CSV →',
-    page: 'transactions',
-    icon: (
-      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-        <polyline points="17 8 12 3 7 8" />
-        <line x1="12" y1="3" x2="12" y2="15" />
-      </svg>
-    ),
-  },
-]
+function GetStartedPage({ salary, transactions, fixedCosts, onNavigate }) {
+  const hasIncome       = salary.gross > 0
+  const hasTransactions = transactions.length > 0
+  const untaggedCount   = transactions.filter(
+    t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category) && !t.category
+  ).length
+  const allTagged = hasTransactions && untaggedCount === 0
+  const allDone   = hasIncome && hasTransactions && allTagged
 
-function OnboardingScreen({ onNavigate, onDismiss }) {
+  const completedCount = [hasIncome, hasTransactions, allTagged, allDone].filter(Boolean).length
+
+  const steps = [
+    {
+      num: 1,
+      title: 'Set your income',
+      desc: 'Add your gross salary, tax rate, and deductions so Budgr can calculate your net income and savings rate.',
+      page: 'salary',
+      label: 'Set Income',
+      done: hasIncome,
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+          <line x1="12" y1="1" x2="12" y2="23" />
+          <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+        </svg>
+      ),
+    },
+    {
+      num: 2,
+      title: 'Upload a CSV',
+      desc: 'Download your bank statement as a CSV and import it. Works with RBC, TD, Scotiabank, BMO, and CIBC.',
+      page: 'transactions',
+      label: 'Import CSV',
+      done: hasTransactions,
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+      ),
+    },
+    {
+      num: 3,
+      title: 'Tag your transactions',
+      desc: hasTransactions
+        ? untaggedCount > 0
+          ? `${untaggedCount} transaction${untaggedCount !== 1 ? 's' : ''} still need a category. Click any row to assign one.`
+          : 'All transactions are tagged — nice work!'
+        : 'After importing, assign categories to your transactions for accurate spending breakdowns.',
+      page: 'transactions',
+      label: 'Tag Transactions',
+      done: allTagged,
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" />
+          <line x1="7" y1="7" x2="7.01" y2="7" />
+        </svg>
+      ),
+    },
+    {
+      num: 4,
+      title: 'Review your dashboard',
+      desc: 'See your monthly spending breakdown, category totals, savings rate, and year-to-date summary.',
+      page: 'dashboard',
+      label: 'View Dashboard',
+      done: allDone,
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg>
+      ),
+    },
+  ]
+
   return (
-    <div className="min-h-screen bg-[#1A1A2E] flex flex-col items-center justify-center px-6 py-16">
+    <div className="max-w-xl">
 
-      {/* Hero */}
-      <div className="text-center mb-12">
-        <p className="text-white font-bold text-4xl tracking-tight mb-4">Budgr</p>
-        <h1 className="text-white text-2xl font-semibold mb-3">Welcome to Budgr</h1>
-        <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed">
-          Your personal finance dashboard — let's get you set up in 3 steps
-        </p>
+      <div className="mb-6">
+        <h2 className="text-xl font-bold text-gray-900">Get Started</h2>
+        <p className="text-sm text-gray-400 mt-1">Complete these four steps to get the most out of Budgr.</p>
       </div>
 
-      {/* Step cards */}
-      <div className="grid grid-cols-3 gap-5 w-full max-w-2xl mb-10">
-        {ONBOARDING_STEPS.map(step => (
-          <div key={step.num} className="bg-white rounded-2xl p-6 shadow-xl flex flex-col">
-            <div className="flex items-center gap-3 mb-5">
-              <span className="w-7 h-7 rounded-full bg-[#0D7377] text-white text-xs font-bold flex items-center justify-center shrink-0">
-                {step.num}
-              </span>
-              <span className="text-[#0D7377]">{step.icon}</span>
-            </div>
-            <h3 className="text-gray-900 font-semibold text-sm mb-2">{step.title}</h3>
-            <p className="text-gray-400 text-xs leading-relaxed flex-1 mb-5">{step.desc}</p>
-            <button
-              type="button"
-              onClick={() => onNavigate(step.page)}
-              className="w-full py-2.5 rounded-xl bg-[#1A1A2E] text-white text-xs font-medium hover:bg-[#0F3460] transition-colors"
+      {/* Progress bar */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Setup progress</span>
+          <span className="text-xs font-medium tabular-nums" style={{ color: completedCount === 4 ? '#0D7377' : '#6B7280' }}>
+            {completedCount} / 4 complete
+          </span>
+        </div>
+        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{ backgroundColor: '#0D7377', width: `${(completedCount / 4) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Step list */}
+      <div className="space-y-3">
+        {steps.map(step => (
+          <div
+            key={step.num}
+            className={`bg-white rounded-xl border border-gray-100 p-5 flex items-start gap-4 transition-opacity ${step.done ? 'opacity-60' : ''}`}
+          >
+            {/* Circle indicator */}
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+              style={{ backgroundColor: step.done ? '#0D7377' : '#1A1A2E' }}
             >
-              {step.label}
-            </button>
+              {step.done ? (
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <span className="text-white text-xs font-bold">{step.num}</span>
+              )}
+            </div>
+
+            {/* Text */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-sm font-semibold ${step.done ? 'text-gray-400' : 'text-gray-800'}`}>
+                  {step.title}
+                </span>
+                {step.done && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#0D737715', color: '#0D7377' }}>
+                    Done
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed">{step.desc}</p>
+            </div>
+
+            {/* Action */}
+            {!step.done && (
+              <button
+                onClick={() => onNavigate(step.page)}
+                className="shrink-0 bg-[#1A1A2E] text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-[#0b6165] transition-colors whitespace-nowrap"
+                style={{ backgroundColor: '#0D7377' }}
+              >
+                {step.label} →
+              </button>
+            )}
           </div>
         ))}
       </div>
-
-      {/* Skip */}
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="text-white/30 text-sm hover:text-white/60 transition-colors"
-      >
-        Skip for now →
-      </button>
 
     </div>
   )
@@ -2112,7 +2176,7 @@ export default function App() {
   const [user, setUser]       = useState(undefined)
   const [loading, setLoading] = useState(true)
 
-  const [activePage, setActivePage]         = useState('dashboard')
+  const [activePage, setActivePage]         = useState('get-started')
   const [selectedMonth, setSelectedMonth]   = useState('01')
   const [dragging, setDragging]             = useState(false)
   const [toast, setToast]                   = useState(null)
@@ -2122,7 +2186,6 @@ export default function App() {
   const [fixedCosts, setFixedCosts]         = useState([])
   const [savingsEntries, setSavingsEntries] = useState([])
   const [dedupKeyCache, setDedupKeyCache]   = useState(new Set())
-  const [onboardingDismissed, setOnboardingDismissed] = useState(false)
   const [csvUploads, setCsvUploads]         = useState([])
   const [uploadHistoryOpen, setUploadHistoryOpen] = useState(false)
   const dataLoadedFor   = useRef(null)
@@ -2498,6 +2561,7 @@ export default function App() {
   const selectedMonthLabel = MONTHS.find(m => m.id === selectedMonth)?.label || ''
 
   const PAGE_TITLES = {
+    'get-started': 'Get Started',
     dashboard:    `${selectedMonthLabel} 2026 — Transactions`,
     transactions: 'All Transactions',
     salary:       'Salary',
@@ -2510,19 +2574,6 @@ export default function App() {
 
   if (user === undefined || loading) return <LoadingSpinner />
   if (user === null) return <AuthScreen />
-
-  const showOnboarding =
-    !onboardingDismissed &&
-    transactions.length === 0 &&
-    fixedCosts.length === 0 &&
-    salary.gross === 0
-
-  if (showOnboarding) return (
-    <OnboardingScreen
-      onNavigate={setActivePage}
-      onDismiss={() => setOnboardingDismissed(true)}
-    />
-  )
 
   return (
     <div
@@ -2632,6 +2683,15 @@ export default function App() {
 
         {/* Page content */}
         <main className="flex-1 overflow-auto p-6">
+
+          {activePage === 'get-started' && (
+            <GetStartedPage
+              salary={salary}
+              transactions={transactions}
+              fixedCosts={fixedCosts}
+              onNavigate={setActivePage}
+            />
+          )}
 
           {activePage === 'dashboard' && (
             <MonthlyDashboard
