@@ -2123,6 +2123,8 @@ export default function App() {
   const [savingsEntries, setSavingsEntries] = useState([])
   const [dedupKeyCache, setDedupKeyCache]   = useState(new Set())
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
+  const [csvUploads, setCsvUploads]         = useState([])
+  const [uploadHistoryOpen, setUploadHistoryOpen] = useState(false)
   const dataLoadedFor   = useRef(null)
   const salaryTimerRef  = useRef(null)
 
@@ -2149,11 +2151,12 @@ export default function App() {
     async function loadData() {
       setLoading(true)
       try {
-        const [txnRes, memRes, fixedRes, salaryRes] = await Promise.all([
+        const [txnRes, memRes, fixedRes, salaryRes, uploadsRes] = await Promise.all([
           supabase.from('transactions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
           supabase.from('category_memory').select('*').eq('user_id', user.id),
           supabase.from('fixed_costs').select('*').eq('user_id', user.id),
           supabase.from('salary_settings').select('*').eq('user_id', user.id).limit(1),
+          supabase.from('csv_uploads').select('*').eq('user_id', user.id).order('uploaded_at', { ascending: false }),
         ])
 
         let mem = {}
@@ -2199,6 +2202,8 @@ export default function App() {
             deductions: salaryRow.monthly_deductions ?? 0,
           })
         }
+
+        if (uploadsRes.data) setCsvUploads(uploadsRes.data)
       } catch (err) {
         console.error('[budgr] load failed:', err)
       } finally {
@@ -2394,6 +2399,14 @@ export default function App() {
         amount: r.amount, type: r.type, category: r.category ?? '',
         fromMemory: r.from_memory ?? false,
       }))
+
+      // Record the upload in csv_uploads
+      const { data: uploadRow } = await supabase
+        .from('csv_uploads')
+        .insert({ user_id: user.id, filename: file.name, transaction_count: fresh.length })
+        .select()
+        .single()
+      if (uploadRow) setCsvUploads(prev => [uploadRow, ...prev])
 
       // Update cache: merge DB-discovered existing keys + newly inserted keys
       const nextCache = new Set(dedupKeyCache)
@@ -2649,6 +2662,55 @@ export default function App() {
                 </div>
 
               </div>
+
+              {/* Upload History */}
+              <div className="bg-white rounded-xl border border-gray-100 mb-5">
+                <button
+                  onClick={() => setUploadHistoryOpen(o => !o)}
+                  className="w-full flex items-center justify-between px-5 py-3.5 text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-700">Upload History</span>
+                    {csvUploads.length > 0 && (
+                      <span className="text-xs font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                        {csvUploads.length}
+                      </span>
+                    )}
+                  </div>
+                  <svg
+                    className={`w-4 h-4 text-gray-400 transition-transform ${uploadHistoryOpen ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {uploadHistoryOpen && (
+                  <div className="border-t border-gray-50">
+                    {csvUploads.length === 0 ? (
+                      <p className="px-5 py-4 text-sm italic text-gray-400">No imports yet</p>
+                    ) : (
+                      <div className="divide-y divide-gray-50">
+                        {csvUploads.map(u => (
+                          <div key={u.id} className="flex items-center px-5 py-3 gap-3">
+                            <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span className="text-sm text-gray-700 flex-1 truncate font-medium">{u.filename}</span>
+                            <span className="text-xs text-gray-400 tabular-nums shrink-0">
+                              {new Date(u.uploaded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                            <span className="text-xs font-medium text-gray-500 tabular-nums shrink-0 w-24 text-right">
+                              {u.transaction_count} transaction{u.transaction_count !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <TransactionView txns={transactions} setCategory={setCategory} />
             </div>
           )}
