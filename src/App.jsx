@@ -461,41 +461,6 @@ function TransactionView({ txns, setCategory }) {
 
 const CATS_SET = new Set(CATEGORIES)
 
-function CatSectionLabel({ children }) {
-  return (
-    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pt-5 pb-1 first:pt-0">
-      {children}
-    </p>
-  )
-}
-
-function CatRow({ label, value, muted, italic, colorClass, dot }) {
-  return (
-    <div className="flex items-center py-2 border-b border-gray-50 last:border-0">
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        {dot && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dot }} />}
-        <span className={`text-sm truncate ${italic ? 'italic ' : ''}${muted ? 'text-gray-400' : 'text-gray-600'}`}>
-          {label}
-        </span>
-      </div>
-      <span className={`text-sm tabular-nums text-right w-28 shrink-0 font-medium ${colorClass || 'text-gray-800'}`}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function CatSubtotal({ label, value, colorClass }) {
-  return (
-    <div className="flex items-center py-2.5 border-t-2 border-gray-200">
-      <span className="flex-1 text-sm font-semibold text-gray-700">{label}</span>
-      <span className={`text-sm font-bold tabular-nums text-right w-28 shrink-0 ${colorClass || 'text-gray-900'}`}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
 function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
   const allDebitsAnn = transactions.filter(t =>
     t.type === 'debit' &&
@@ -538,64 +503,95 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
     .sort(([, a], [, b]) => b - a)
   const savingsYTD = savingsCatEntries.reduce((s, [, v]) => s + v, 0)
 
+  // Build the card list: fixed costs + spending groups + custom + savings
+  const cards = [
+    {
+      name: 'Fixed Costs',
+      hex: '#6B7280',
+      items: fixedCostItems.map(c => [c.name, monthsWithData > 0 ? c.amount * monthsWithData : 0]),
+      total: fixedYTD,
+      emptyMsg: 'No fixed costs entered',
+    },
+    ...spendingGroups.map(g => ({
+      name: g.name,
+      hex: g.hex,
+      items: g.entries,
+      total: g.total,
+    })),
+    ...(customEntries.length > 0 ? [{
+      name: 'Custom Categories',
+      hex: '#8B5CF6',
+      items: customEntries,
+      total: customTotal,
+    }] : []),
+    {
+      name: 'Savings',
+      hex: '#0D7377',
+      items: savingsCatEntries,
+      total: savingsYTD,
+      emptyMsg: 'No savings entries',
+      accent: true,
+    },
+  ]
+
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-6">
-      <h2 className="text-sm font-semibold text-gray-800 mb-1">
-        Categories — {APP_YEAR} YTD
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <p className="text-sm font-semibold text-gray-800">Categories — {APP_YEAR} YTD</p>
         {monthsWithData > 0 && (
-          <span className="ml-2 text-xs font-normal text-gray-400">({monthsWithData} mo)</span>
+          <span className="text-xs text-gray-400">({monthsWithData} mo)</span>
         )}
-      </h2>
+      </div>
 
-      <CatSectionLabel>Fixed Costs</CatSectionLabel>
-      {fixedCostItems.length > 0
-        ? fixedCostItems.map(c => (
-            <CatRow key={c.id} label={c.name}
-              value={monthsWithData > 0 ? fmt(c.amount * monthsWithData) : '—'} />
-          ))
-        : <CatRow label="No fixed costs entered" value="—" muted italic />
-      }
-      <CatSubtotal label="Fixed Costs YTD" value={fixedYTD > 0 ? fmt(fixedYTD) : '—'} />
+      <div className="grid grid-cols-3 gap-4">
+        {cards.map(card => (
+          <div key={card.name} className="bg-white rounded-xl border border-gray-100 p-5">
 
-      {spendingGroups.length === 0 && (
-        <>
-          <CatSectionLabel>Variable Spending</CatSectionLabel>
-          <CatRow label="No transactions yet" value="—" muted italic />
-          <CatSubtotal label="Variable Subtotal YTD" value="—" />
-        </>
-      )}
-      {spendingGroups.map(group => (
-        <div key={group.name}>
-          <CatSectionLabel>{group.name}</CatSectionLabel>
-          {group.entries.map(([cat, amt]) => (
-            <CatRow key={cat} label={cat} value={fmt(amt)} dot={group.hex} />
-          ))}
-          <CatSubtotal label={`${group.name} Subtotal`} value={fmt(group.total)} />
-        </div>
-      ))}
+            {/* Card header */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: card.hex }} />
+                <p className="text-sm font-semibold text-gray-800">{card.name}</p>
+              </div>
+              <span className="text-[11px] text-gray-400">
+                {card.items.length} {card.items.length === 1 ? 'item' : 'items'}
+              </span>
+            </div>
 
-      {customEntries.length > 0 && (
-        <>
-          <CatSectionLabel>Custom Categories</CatSectionLabel>
-          {customEntries.map(([cat, amt]) => (
-            <CatRow key={cat} label={cat} value={fmt(amt)} />
-          ))}
-          <CatSubtotal label="Custom Categories YTD" value={fmt(customTotal)} />
-        </>
-      )}
+            {/* Category rows */}
+            <div className="space-y-3">
+              {card.items.length > 0 ? card.items.map(([label, amt]) => {
+                const pct = card.total > 0 ? (amt / card.total) * 100 : 0
+                return (
+                  <div key={label}>
+                    <div className="flex justify-between items-center text-xs mb-1.5">
+                      <span className="text-gray-600 truncate mr-2">{label}</span>
+                      <span className={`tabular-nums font-medium shrink-0 ${card.accent ? 'text-[#0D7377]' : 'text-gray-800'}`}>
+                        {fmt(amt)}
+                      </span>
+                    </div>
+                    <div className="h-[3px] bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, backgroundColor: card.hex }} />
+                    </div>
+                  </div>
+                )
+              }) : (
+                <p className="text-xs italic text-gray-400">{card.emptyMsg || 'No data'}</p>
+              )}
+            </div>
 
-      <CatSectionLabel>Savings</CatSectionLabel>
-      {savingsCatEntries.length > 0
-        ? savingsCatEntries.map(([cat, ytdAmt]) => (
-            <CatRow key={cat} label={cat}
-              value={ytdAmt > 0 ? fmt(ytdAmt) : '—'}
-              colorClass="text-[#0D7377]" />
-          ))
-        : <CatRow label="No savings entries" value="—" muted italic />
-      }
-      <CatSubtotal label="Total Savings YTD"
-        value={savingsYTD > 0 ? fmt(savingsYTD) : '—'}
-        colorClass="text-[#0D7377]" />
+            {/* Card footer */}
+            <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center">
+              <span className="text-xs text-gray-400">Total YTD</span>
+              <span className={`text-sm font-semibold tabular-nums ${card.accent ? 'text-[#0D7377]' : 'text-gray-900'}`}>
+                {card.total > 0 ? fmt(card.total) : '—'}
+              </span>
+            </div>
+
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
