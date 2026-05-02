@@ -2024,7 +2024,8 @@ export default function App() {
   const [savingsEntries, setSavingsEntries] = useState([])
   const [dedupKeyCache, setDedupKeyCache]   = useState(new Set())
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
-  const dataLoadedFor = useRef(null)
+  const dataLoadedFor   = useRef(null)
+  const salaryTimerRef  = useRef(null)
 
   const dedupKey = t => `${t.date}|${t.amount}|${t.description.toUpperCase().trim()}`
 
@@ -2053,7 +2054,7 @@ export default function App() {
           supabase.from('transactions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
           supabase.from('category_memory').select('*').eq('user_id', user.id),
           supabase.from('fixed_costs').select('*').eq('user_id', user.id),
-          supabase.from('salary_settings').select('*').eq('user_id', user.id).maybeSingle(),
+          supabase.from('salary_settings').select('*').eq('user_id', user.id).limit(1),
         ])
 
         let mem = {}
@@ -2091,11 +2092,12 @@ export default function App() {
           setSavingsEntries(rows.filter(r => isSaving(r.category)))
         }
 
-        if (salaryRes.data) {
+        const salaryRow = salaryRes.data?.[0]
+        if (salaryRow) {
           setSalary({
-            gross: salaryRes.data.gross ?? 0,
-            taxRate: salaryRes.data.tax_rate ?? 30,
-            deductions: salaryRes.data.deductions ?? 0,
+            gross: salaryRow.gross ?? 0,
+            taxRate: salaryRow.tax_rate ?? 30,
+            deductions: salaryRow.deductions ?? 0,
           })
         }
       } catch (err) {
@@ -2326,10 +2328,18 @@ export default function App() {
 
   function handleSalaryChange(next) {
     setSalary(next)
-    supabase.from('salary_settings').upsert(
-      { user_id: user.id, gross: next.gross, tax_rate: next.taxRate, deductions: next.deductions },
-      { onConflict: 'user_id' }
-    )
+    clearTimeout(salaryTimerRef.current)
+    salaryTimerRef.current = setTimeout(async () => {
+      const payload = { gross: next.gross, tax_rate: next.taxRate, deductions: next.deductions }
+      const { data: updated, error: updateErr } = await supabase
+        .from('salary_settings').update(payload).eq('user_id', user.id).select()
+      if (updateErr) { console.error('[budgr] salary update failed:', updateErr); return }
+      if (!updated?.length) {
+        const { error: insertErr } = await supabase
+          .from('salary_settings').insert({ user_id: user.id, ...payload })
+        if (insertErr) console.error('[budgr] salary insert failed:', insertErr)
+      }
+    }, 600)
   }
 
   const annualNet         = salary.gross > 0
