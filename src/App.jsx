@@ -876,10 +876,7 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
   }, {})
 
   return (
-    <div className="flex gap-5">
-
-      {/* Left panel */}
-      <div className="flex-1 min-w-0">
+    <div>
 
         {/* Income statement card */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-5">
@@ -1056,69 +1053,7 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
             </>
           )}
         </div>
-      </div>
 
-      {/* Right panel */}
-      <div className="w-72 shrink-0 space-y-4">
-
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Breakdown</p>
-
-          <div className="space-y-3">
-            {CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(group => {
-              const txnTotal   = group.cats.reduce((s, cat) =>
-                s + debits.filter(t => t.category === cat).reduce((ss, t) => ss + t.amount, 0), 0
-              )
-              const fixedTotal = fixedCosts
-                .filter(c => group.cats.includes(c.category))
-                .reduce((s, c) => s + c.amount, 0)
-              const groupTotal = txnTotal + fixedTotal
-              if (groupTotal === 0) return null
-              const pct = totalSpent > 0 ? (groupTotal / totalSpent) * 100 : 0
-              return (
-                <div key={group.name}>
-                  <div className="flex justify-between items-center text-xs mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.hex }} />
-                      <span className="text-gray-600">{group.name}</span>
-                    </div>
-                    <span className="font-medium text-gray-800 tabular-nums">{fmt(groupTotal)}</span>
-                  </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: group.hex }} />
-                  </div>
-                </div>
-              )
-            })}
-            {debits.length === 0 && fixedCosts.length === 0 && (
-              <p className="text-xs text-gray-300 text-center py-2">No spending this month</p>
-            )}
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="text-gray-500">Fixed costs</span>
-              <span className="font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-gray-500">Variable</span>
-              <span className="font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
-            </div>
-            <div className="flex justify-between text-xs font-semibold pt-1.5 border-t border-gray-100">
-              <span className="text-gray-700">Total expenses</span>
-              <span className="text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
-            </div>
-            {totalSavings > 0 && (
-              <div className="flex justify-between text-xs font-semibold text-[#0D7377]">
-                <span>Savings</span>
-                <span className="tabular-nums">{fmt(totalSavings)}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-
-      </div>
     </div>
   )
 }
