@@ -12,10 +12,10 @@ const CATEGORIES = [
   'Investments', 'Loan Repayments', 'Personal Care',
   'Phone & Internet', 'Refund / Return', 'Rent / Mortgage', 'RRSP', 'Savings', 'Savings Transfer',
   'Shopping', 'Subscriptions', 'TFSA', 'Transfer / Payment', 'Transit / Rideshare',
-  'Travel', 'Utilities',
+  'Travel', 'Utilities', 'Omit',
 ]
 
-const EXCLUDE_FROM_TOTALS = new Set(['Transfer / Payment', 'Credit Card Payment'])
+const EXCLUDE_FROM_TOTALS = new Set(['Transfer / Payment', 'Credit Card Payment', 'Omit'])
 
 // Saving categories — lowercase for case-insensitive matching
 const SAVING_CATEGORIES = ['investments', 'savings', 'savings transfer', 'rrsp', 'tfsa', 'emergency fund']
@@ -92,6 +92,7 @@ const CATEGORY_GROUPS = [
 const CATEGORY_COLOR = Object.fromEntries(
   CATEGORY_GROUPS.flatMap(g => g.cats.map(c => [c, g.hex]))
 )
+CATEGORY_COLOR['Omit'] = '#9CA3AF'
 
 const FIXED_CATS = new Set([
   'Rent / Mortgage', 'Utilities', 'Car Payment / Insurance',
@@ -849,9 +850,10 @@ function SavingsPage({ savingsEntries, onAdd, onDelete }) {
 
 function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts, savingsEntries }) {
   const monthTxns = txns.filter(t => yearMonthOf(t.date) === APP_YEAR + '-' + selectedMonth)
-  const allDebits = monthTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
-  const debits    = allDebits.filter(t => !isSaving(t.category))
-  const untagged  = monthTxns.filter(t => !t.category).length
+  const allDebits   = monthTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
+  const debits      = allDebits.filter(t => !isSaving(t.category))
+  const savingsTxns = allDebits.filter(t => isSaving(t.category))
+  const untagged    = monthTxns.filter(t => !t.category).length
 
   const txnSpent          = debits.reduce((sum, t) => sum + t.amount, 0)
   const fixedMonthlyTotal = fixedCosts.reduce((s, c) => s + c.amount, 0)
@@ -862,14 +864,16 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
     : 0
   const monthlyNet = annualNet / 12
 
-  // Savings = residual: Net Income − Fixed Costs − Variable Spending
-  const totalSavings = monthlyNet > 0 ? Math.max(0, monthlyNet - totalSpent) : 0
-  const savingsRate  = monthlyNet > 0 ? (totalSavings / monthlyNet) * 100 : null
-
-  // Savings entries breakdown
-  const savingsByCat       = savingsEntries.reduce((acc, e) => { acc[e.category] = (acc[e.category] || 0) + e.amount; return acc }, {})
+  // Savings = amounts entered on the Savings page
   const savingsEntriesTotal = savingsEntries.reduce((s, e) => s + e.amount, 0)
-  const savingsUnallocated  = Math.max(0, totalSavings - savingsEntriesTotal)
+  const totalSavings        = savingsEntriesTotal
+  const savingsRate         = monthlyNet > 0 ? (totalSavings / monthlyNet) * 100 : null
+
+  // Savings breakdown by category from entries
+  const savingsByCat = savingsEntries.reduce((acc, e) => {
+    acc[e.category] = (acc[e.category] || 0) + e.amount
+    return acc
+  }, {})
 
   return (
     <div className="flex gap-5">
@@ -913,12 +917,7 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
               <span className="text-xs font-semibold text-[#0D7377] tabular-nums">{fmt(amount)}</span>
             </div>
           ))}
-          {savingsUnallocated > 0 && (
-            <div className="flex items-center justify-between px-5 py-2.5 border-b border-gray-50" style={{ backgroundColor: '#F0FDF9' }}>
-              <span className="text-xs font-medium text-[#0D7377]">Unallocated</span>
-              <span className="text-xs font-semibold text-[#0D7377] tabular-nums">{fmt(savingsUnallocated)}</span>
-            </div>
-          )}
+
 
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
             <span className="text-sm font-semibold text-gray-700">Total Savings</span>
@@ -1117,8 +1116,17 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
     : 0
   const monthlyNet = annualNet / 12
 
-  const monthIdx     = parseInt(selectedMonth, 10)
-  const incomeToDate = monthlyNet * monthIdx
+  const monthIdx = parseInt(selectedMonth, 10)
+
+  const today         = new Date()
+  const todayYear     = today.getFullYear().toString()
+  const todayMonthIdx = today.getMonth() + 1
+  const dayOfMonth    = today.getDate()
+  const daysInMonth   = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+  const monthsElapsed = todayYear === APP_YEAR
+    ? (todayMonthIdx - 1) + dayOfMonth / daysInMonth
+    : 0
+  const incomeToDate  = monthlyNet * monthsElapsed
 
   const debits = transactions.filter(t =>
     t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category) && !isSaving(t.category)
@@ -1239,7 +1247,9 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
             {incomeToDate > 0 ? fmt(incomeToDate) : '—'}
           </p>
           <p className="text-[10px] text-gray-400 italic mt-1.5">
-            Monthly Net × {monthIdx} month{monthIdx !== 1 ? 's' : ''} elapsed (through {monthLabel})
+            Monthly Net × {todayYear === APP_YEAR
+              ? `${todayMonthIdx - 1} mo + ${dayOfMonth} day${dayOfMonth !== 1 ? 's' : ''} (through ${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
+              : '—'}
           </p>
         </div>
 
@@ -1320,15 +1330,26 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
   const projectedVariable  = avgMonthlyVariable !== null ? avgMonthlyVariable * 12 : null
   const totalExpensesProj  = projectedVariable !== null ? fixedAnnualProjected + projectedVariable : null
 
-  // YTD figures — residual savings model
-  const fixedYTD         = fixedMonthlyTotal * monthsWithData
-  const totalExpYTD      = txnSpent + fixedYTD
-  const incomeToDate     = monthlyNet * monthsWithData
-  const totalSavingsYTD  = incomeToDate > 0 ? Math.max(0, incomeToDate - totalExpYTD) : null
-  const savingsRateYTD   = incomeToDate > 0 && totalSavingsYTD !== null ? (totalSavingsYTD / incomeToDate) * 100 : null
+  // YTD figures — today's date for income
+  const today         = new Date()
+  const todayYear     = today.getFullYear().toString()
+  const todayMonthIdx = today.getMonth() + 1
+  const dayOfMonth    = today.getDate()
+  const daysInMonth   = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+  const monthsElapsed = todayYear === APP_YEAR ? (todayMonthIdx - 1) + dayOfMonth / daysInMonth : monthsWithData
 
-  // Projected savings (residual)
-  const projectedSavings = totalExpensesProj !== null ? Math.max(0, annualNet - totalExpensesProj) : null
+  const fixedYTD    = fixedMonthlyTotal * monthsElapsed
+  const totalExpYTD = txnSpent + fixedYTD
+  const incomeToDate = monthlyNet * monthsElapsed
+
+  // Savings = savings entries (monthly amounts from Savings page) × elapsed months
+  const monthlySavingsTotal = savingsEntries.reduce((s, e) => s + e.amount, 0)
+  const allSavingsYTD       = monthlySavingsTotal * monthsElapsed
+  const totalSavingsYTD     = allSavingsYTD > 0 ? allSavingsYTD : null
+  const savingsRateYTD      = incomeToDate > 0 && allSavingsYTD > 0 ? (allSavingsYTD / incomeToDate) * 100 : null
+
+  // Projected savings based on savings entries monthly total
+  const projectedSavings = monthlySavingsTotal > 0 ? monthlySavingsTotal * 12 : null
   const savingsRate      = annualNet > 0 && projectedSavings !== null ? (projectedSavings / annualNet) * 100 : null
 
   // Per-category breakdown for income statement
@@ -1350,6 +1371,13 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
     .filter(([cat]) => !knownCats.has(cat))
     .map(([cat, amt]) => ({ cat, amt }))
     .sort((a, b) => b.amt - a.amt)
+
+  // Savings breakdown by category (entries × elapsed months for YTD amounts)
+  const savingsCatMap = savingsEntries.reduce((acc, e) => {
+    acc[e.category] = (acc[e.category] || 0) + e.amount * monthsElapsed
+    return acc
+  }, {})
+  const savingsCatEntries = Object.entries(savingsCatMap).sort((a, b) => b[1] - a[1])
 
   const chartData = MONTHS.map(m => {
     const txnTotal = debits
@@ -1467,15 +1495,16 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
 
         {/* Savings rows */}
         <div className="border-t border-gray-100 divide-y divide-gray-50 pt-1">
+          <div className="flex justify-between items-center py-2.5">
+            <span className="text-sm text-gray-600">Savings YTD</span>
+            <span className="text-sm font-medium text-[#0D7377] tabular-nums">{allSavingsYTD > 0 ? fmt(allSavingsYTD) : '—'}</span>
+          </div>
           <div className="flex justify-between items-center py-3">
-            <span className="text-sm font-semibold text-gray-700">Total Savings (projected)</span>
+            <span className="text-sm font-semibold text-gray-700">Projected Savings (full year)</span>
             <span className={`text-xl font-bold tabular-nums ${
-              projectedSavings === null ? 'text-gray-300'
-              : projectedSavings >= 0 ? 'text-[#0D7377]' : 'text-red-500'
+              projectedSavings === null ? 'text-gray-300' : 'text-[#0D7377]'
             }`}>
-              {projectedSavings === null
-                ? '—'
-                : (projectedSavings < 0 ? '−' : '') + fmt(Math.abs(projectedSavings))}
+              {projectedSavings === null ? '—' : fmt(projectedSavings)}
             </span>
           </div>
           <div className="flex justify-between items-center py-3">
@@ -1567,7 +1596,25 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
           </div>
         )}
 
-        {/* Totals + Net Savings */}
+        {/* Savings */}
+        {savingsCatEntries.length > 0 && (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1 pt-0">Savings</p>
+            {savingsCatEntries.map(([cat, amt]) => (
+              <div key={cat} className="flex items-center py-2 border-b border-gray-50">
+                <span className="w-2 h-2 rounded-full shrink-0 mr-2.5" style={{ backgroundColor: '#14A085' }} />
+                <span className="text-sm text-gray-600 flex-1">{cat}</span>
+                <span className="text-sm font-medium text-[#0D7377] tabular-nums">{fmt(amt)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
+              <span className="text-sm font-semibold text-gray-700">Savings Subtotal</span>
+              <span className="text-sm font-bold text-[#0D7377] tabular-nums">{fmt(allSavingsYTD)}</span>
+            </div>
+          </>
+        )}
+
+        {/* Totals */}
         <div className="flex justify-between items-center py-2.5 border-t border-gray-200">
           <span className="text-sm font-semibold text-gray-700">Total Expenses YTD</span>
           <span className="text-sm font-bold text-gray-900 tabular-nums">{totalExpYTD > 0 ? fmt(totalExpYTD) : '—'}</span>
@@ -1575,8 +1622,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
         <div className="flex justify-between items-center py-3.5 border-t-4 border-gray-800 mt-1">
           <span className="text-sm font-bold text-gray-800">Net Savings YTD</span>
           <span className={`text-xl font-bold tabular-nums ${
-            totalSavingsYTD === null ? 'text-gray-300'
-            : totalSavingsYTD >= 0 ? 'text-[#0D7377]' : 'text-red-500'
+            totalSavingsYTD === null ? 'text-gray-300' : 'text-[#0D7377]'
           }`}>
             {totalSavingsYTD === null ? '—' : fmt(totalSavingsYTD)}
           </span>
@@ -2187,7 +2233,7 @@ export default function App() {
   const [savingsEntries, setSavingsEntries] = useState([])
   const [dedupKeyCache, setDedupKeyCache]   = useState(new Set())
   const [csvUploads, setCsvUploads]         = useState([])
-  const [uploadHistoryOpen, setUploadHistoryOpen] = useState(false)
+  const [uploadHistoryOpen, setUploadHistoryOpen] = useState(true)
   const dataLoadedFor   = useRef(null)
   const salaryTimerRef  = useRef(null)
 
@@ -2214,13 +2260,14 @@ export default function App() {
     async function loadData() {
       setLoading(true)
       try {
-        const [txnRes, memRes, fixedRes, salaryRes, uploadsRes] = await Promise.all([
+        const [txnRes, memRes, fixedRes, salaryRes] = await Promise.all([
           supabase.from('transactions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
           supabase.from('category_memory').select('*').eq('user_id', user.id),
           supabase.from('fixed_costs').select('*').eq('user_id', user.id),
           supabase.from('salary_settings').select('*').eq('user_id', user.id).limit(1),
-          supabase.from('csv_uploads').select('*').eq('user_id', user.id).order('uploaded_at', { ascending: false }),
         ])
+        const storedUploads = JSON.parse(localStorage.getItem(`csvUploads_${user.id}`) || '[]')
+        setCsvUploads(storedUploads)
 
         let mem = {}
         if (memRes.data) {
@@ -2266,7 +2313,6 @@ export default function App() {
           })
         }
 
-        if (uploadsRes.data) setCsvUploads(uploadsRes.data)
       } catch (err) {
         console.error('[budgr] load failed:', err)
       } finally {
@@ -2420,6 +2466,14 @@ export default function App() {
 
       const skipped = incoming.length - fresh.length
 
+      // Always record the upload attempt (even if all dupes)
+      const newUpload = { id: Date.now(), filename: file.name, total_count: incoming.length, new_count: fresh.length, uploaded_at: new Date().toISOString() }
+      setCsvUploads(prev => {
+        const next = [newUpload, ...prev]
+        localStorage.setItem(`csvUploads_${user.id}`, JSON.stringify(next))
+        return next
+      })
+
       // All dupes — patch cache and bail
       if (fresh.length === 0) {
         if (dbExisting.length > 0) {
@@ -2492,14 +2546,6 @@ export default function App() {
         amount: r.amount, type: r.type, category: r.category ?? '',
         fromMemory: r.from_memory ?? false,
       }))
-
-      // Record the upload in csv_uploads
-      const { data: uploadRow } = await supabase
-        .from('csv_uploads')
-        .insert({ user_id: user.id, filename: file.name, transaction_count: fresh.length })
-        .select()
-        .single()
-      if (uploadRow) setCsvUploads(prev => [uploadRow, ...prev])
 
       // Update cache: merge DB-discovered existing keys + newly inserted keys
       const nextCache = new Set(dedupKeyCache)
@@ -2754,18 +2800,23 @@ export default function App() {
               </div>
 
               {/* Upload History */}
-              <div className="bg-white rounded-xl border border-gray-100 mb-5">
+              <div className="rounded-xl border border-gray-300 mb-5 overflow-hidden">
                 <button
                   onClick={() => setUploadHistoryOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-5 py-3.5 text-left"
+                  className="w-full flex items-center justify-between px-5 py-4 text-left bg-gray-100"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-700">Upload History</span>
-                    {csvUploads.length > 0 && (
-                      <span className="text-xs font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
-                        {csvUploads.length}
-                      </span>
-                    )}
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#0D737715' }}>
+                      <svg className="w-4 h-4" style={{ color: '#0D7377' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <span className="text-sm font-semibold text-gray-800">Upload History</span>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {csvUploads.length === 0 ? 'No imports yet' : `${csvUploads.length} file${csvUploads.length !== 1 ? 's' : ''} imported`}
+                      </p>
+                    </div>
                   </div>
                   <svg
                     className={`w-4 h-4 text-gray-400 transition-transform ${uploadHistoryOpen ? 'rotate-180' : ''}`}
@@ -2776,25 +2827,48 @@ export default function App() {
                 </button>
 
                 {uploadHistoryOpen && (
-                  <div className="border-t border-gray-50">
+                  <div className="border-t border-gray-200">
                     {csvUploads.length === 0 ? (
-                      <p className="px-5 py-4 text-sm italic text-gray-400">No imports yet</p>
+                      <div className="px-5 py-6 flex flex-col items-center gap-2">
+                        <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                        </svg>
+                        <p className="text-sm text-gray-400">No files imported yet</p>
+                        <p className="text-xs text-gray-300">Your upload history will appear here</p>
+                      </div>
                     ) : (
-                      <div className="divide-y divide-gray-50">
-                        {csvUploads.map(u => (
-                          <div key={u.id} className="flex items-center px-5 py-3 gap-3">
-                            <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <span className="text-sm text-gray-700 flex-1 truncate font-medium">{u.filename}</span>
-                            <span className="text-xs text-gray-400 tabular-nums shrink-0">
-                              {new Date(u.uploaded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </span>
-                            <span className="text-xs font-medium text-gray-500 tabular-nums shrink-0 w-24 text-right">
-                              {u.transaction_count} transaction{u.transaction_count !== 1 ? 's' : ''}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="divide-y divide-gray-200 bg-white">
+                        {csvUploads.map((u, i) => {
+                          const total = u.total_count ?? u.transaction_count ?? 0
+                          const newCount = u.new_count ?? total
+                          const allDupes = newCount === 0
+                          return (
+                            <div key={u.id} className="flex items-center px-5 py-3.5 gap-3">
+                              <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${i === 0 && !allDupes ? 'bg-[#0D7377]' : 'bg-gray-100'}`}>
+                                <svg className={`w-3.5 h-3.5 ${i === 0 && !allDupes ? 'text-white' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{u.filename}</p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {new Date(u.uploaded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {' · '}
+                                  {new Date(u.uploaded_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                </p>
+                              </div>
+                              {allDupes ? (
+                                <span className="text-xs font-medium tabular-nums shrink-0 px-2 py-1 rounded-full bg-gray-100 text-gray-400">
+                                  {total} dupes
+                                </span>
+                              ) : (
+                                <span className="text-xs font-semibold tabular-nums shrink-0 px-2 py-1 rounded-full" style={{ backgroundColor: '#0D737715', color: '#0D7377' }}>
+                                  +{newCount} new
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
