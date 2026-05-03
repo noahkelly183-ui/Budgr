@@ -122,7 +122,7 @@ const NAV_SECTIONS = [
     heading: 'OVERVIEW',
     items: [
       { id: 'get-started',  label: 'Get Started' },
-      { id: 'dashboard',    label: 'Dashboard' },
+      { id: 'dashboard',    label: 'Monthly Dashboard' },
       { id: 'transactions', label: 'Transactions' },
       { id: 'salary',       label: 'Salary' },
     ],
