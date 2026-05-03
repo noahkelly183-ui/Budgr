@@ -812,6 +812,10 @@ function SavingsPage({ savingsEntries, onAdd, onDelete }) {
 // ─── MonthlyDashboard ─────────────────────────────────────────────────────────
 
 function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts, savingsEntries }) {
+  const [variableOpen, setVariableOpen] = useState(true)
+  const [fixedOpen, setFixedOpen]       = useState(true)
+  const [savingsOpen, setSavingsOpen]   = useState(true)
+
   const monthTxns = txns.filter(t => yearMonthOf(t.date) === APP_YEAR + '-' + selectedMonth)
   const allDebits   = monthTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
   const debits      = allDebits.filter(t => !isSaving(t.category))
@@ -917,12 +921,15 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
         {/* Transaction table */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
 
-          <div className="px-4 py-2.5 bg-gray-50/80 flex items-center justify-between border-b border-gray-100">
+          <button onClick={() => setVariableOpen(o => !o)} className="w-full px-4 py-2.5 bg-gray-50/80 flex items-center justify-between border-b border-gray-100 text-left">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Variable Spending</span>
-            <span className="text-xs text-gray-400">{monthTxns.length} transaction{monthTxns.length !== 1 ? 's' : ''}</span>
-          </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">{monthTxns.length} transaction{monthTxns.length !== 1 ? 's' : ''}</span>
+              <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${variableOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </button>
 
-          <table className="w-full">
+          {variableOpen && <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide w-28">Date</th>
@@ -963,59 +970,69 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
           <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/60 flex justify-between items-center">
             <span className="text-xs font-medium text-gray-500">Variable total</span>
             <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(txnSpent)}</span>
-          </div>
+          </div>}
 
           {fixedCosts.length > 0 && (
             <>
-              <div className="border-t-2 border-gray-100 px-4 py-2.5 bg-gray-50/80 flex items-center justify-between">
+              <button onClick={() => setFixedOpen(o => !o)} className="w-full border-t-2 border-gray-100 px-4 py-2.5 bg-gray-50/80 flex items-center justify-between text-left">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fixed Costs</span>
-                <span className="text-xs text-gray-400">{fixedCosts.length} item{fixedCosts.length !== 1 ? 's' : ''}</span>
-              </div>
-              {fixedCosts.map((cost, i) => {
-                const hex = CATEGORY_COLOR[cost.category] || '#9CA3AF'
-                return (
-                  <div key={cost.id} className={`flex items-center gap-4 px-4 py-2.5 border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                    <span className="flex-1 text-sm text-gray-700">{cost.name}</span>
-                    <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
-                      {cost.category}
-                    </span>
-                    <span className="text-sm font-semibold text-gray-800 tabular-nums w-24 text-right shrink-0">
-                      {fmt(cost.amount)}
-                    </span>
-                  </div>
-                )
-              })}
-              <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/60 flex justify-between items-center">
-                <span className="text-xs font-medium text-gray-500">Fixed total</span>
-                <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
-              </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400">{fixedCosts.length} item{fixedCosts.length !== 1 ? 's' : ''}</span>
+                  <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${fixedOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                </div>
+              </button>
+              {fixedOpen && <>
+                {fixedCosts.map((cost, i) => {
+                  const hex = CATEGORY_COLOR[cost.category] || '#9CA3AF'
+                  return (
+                    <div key={cost.id} className={`flex items-center gap-4 px-4 py-2.5 border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                      <span className="flex-1 text-sm text-gray-700">{cost.name}</span>
+                      <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
+                        {cost.category}
+                      </span>
+                      <span className="text-sm font-semibold text-gray-800 tabular-nums w-24 text-right shrink-0">
+                        {fmt(cost.amount)}
+                      </span>
+                    </div>
+                  )
+                })}
+                <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/60 flex justify-between items-center">
+                  <span className="text-xs font-medium text-gray-500">Fixed total</span>
+                  <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
+                </div>
+              </>}
             </>
           )}
 
           {savingsEntries.length > 0 && (
             <>
-              <div className="border-t-2 border-gray-100 px-4 py-2.5 bg-[#F0FDF9]/80 flex items-center justify-between">
+              <button onClick={() => setSavingsOpen(o => !o)} className="w-full border-t-2 border-gray-100 px-4 py-2.5 bg-[#F0FDF9]/80 flex items-center justify-between text-left">
                 <span className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide">Savings Allocations</span>
-                <span className="text-xs text-[#0D7377]/60">{savingsEntries.length} item{savingsEntries.length !== 1 ? 's' : ''}</span>
-              </div>
-              {savingsEntries.map((entry, i) => {
-                const hex = CATEGORY_COLOR[entry.category] || '#14A085'
-                return (
-                  <div key={entry.id} className={`flex items-center gap-4 px-4 py-2.5 border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-[#F0FDF9]/30'}`}>
-                    <span className="flex-1 text-sm text-gray-700">{entry.name}</span>
-                    <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
-                      {entry.category}
-                    </span>
-                    <span className="text-sm font-semibold text-[#0D7377] tabular-nums w-24 text-right shrink-0">
-                      {fmt(entry.amount)}
-                    </span>
-                  </div>
-                )
-              })}
-              <div className="border-t border-gray-100 px-4 py-3 bg-[#F0FDF9]/60 flex justify-between items-center">
-                <span className="text-xs font-medium text-[#0D7377]">Savings total</span>
-                <span className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(savingsEntriesTotal)}</span>
-              </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#0D7377]/60">{savingsEntries.length} item{savingsEntries.length !== 1 ? 's' : ''}</span>
+                  <svg className={`w-3.5 h-3.5 text-[#0D7377]/60 transition-transform ${savingsOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                </div>
+              </button>
+              {savingsOpen && <>
+                {savingsEntries.map((entry, i) => {
+                  const hex = CATEGORY_COLOR[entry.category] || '#14A085'
+                  return (
+                    <div key={entry.id} className={`flex items-center gap-4 px-4 py-2.5 border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-[#F0FDF9]/30'}`}>
+                      <span className="flex-1 text-sm text-gray-700">{entry.name}</span>
+                      <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
+                        {entry.category}
+                      </span>
+                      <span className="text-sm font-semibold text-[#0D7377] tabular-nums w-24 text-right shrink-0">
+                        {fmt(entry.amount)}
+                      </span>
+                    </div>
+                  )
+                })}
+                <div className="border-t border-gray-100 px-4 py-3 bg-[#F0FDF9]/60 flex justify-between items-center">
+                  <span className="text-xs font-medium text-[#0D7377]">Savings total</span>
+                  <span className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(savingsEntriesTotal)}</span>
+                </div>
+              </>}
             </>
           )}
         </div>
