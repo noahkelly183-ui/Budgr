@@ -1853,14 +1853,33 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
     .sort((a, b) => (b.totals[currentYear] || 0) - (a.totals[currentYear] || 0))
 
   const kpiCards = [
-    { label: 'Total Spend',    curr: currM?.totalSpend,    prev: prevM?.totalSpend,    accentColor: '#EF4444', bar: 'bg-red-400/70',  invert: true  },
-    { label: 'Variable Spend', curr: currM?.variableSpend, prev: prevM?.variableSpend, accentColor: '#F59E0B', bar: null,             invert: true  },
-    { label: 'Savings',        curr: currM?.savingsYTD,    prev: prevM?.savingsYTD,    accentColor: '#14A085', bar: null,             invert: false },
-    { label: 'Avg Monthly',    curr: currM?.avgMonthly,    prev: prevM?.avgMonthly,    accentColor: '#0D7377', bar: null,             invert: true  },
+    { label: 'Total Spend',    curr: currM?.totalSpend,    prev: prevM?.totalSpend,    accentColor: '#EF4444', invert: true  },
+    { label: 'Variable Spend', curr: currM?.variableSpend, prev: prevM?.variableSpend, accentColor: '#F59E0B', invert: true  },
+    { label: 'Savings',        curr: currM?.savingsYTD,    prev: prevM?.savingsYTD,    accentColor: '#14A085', invert: false },
+    { label: 'Avg Monthly',    curr: currM?.avgMonthly,    prev: prevM?.avgMonthly,    accentColor: '#0D7377', invert: true  },
   ]
 
+  function buildPie(year) {
+    return CATEGORY_GROUPS
+      .filter(g => g.name !== 'Savings')
+      .map(g => ({
+        name:  g.name,
+        value: transactions
+          .filter(t => t.date?.startsWith(year) && t.type === 'debit' && g.cats.includes(t.category))
+          .reduce((s, t) => s + t.amount, 0),
+        fill: g.hex,
+      }))
+      .filter(d => d.value > 0)
+  }
+
+  const currPie = buildPie(currentYear)
+  const prevPie = prevYear ? buildPie(prevYear) : []
+
   return (
-    <div>
+    <div className="flex gap-5 items-start">
+
+      {/* Main content */}
+      <div className="flex-1 min-w-0">
 
       {/* KPI cards */}
       <div className="grid grid-cols-4 gap-4 mb-5">
@@ -1989,6 +2008,71 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
             })}
           </div>
         )}
+      </div>
+
+      </div>{/* end main content */}
+
+      {/* Right: pie charts */}
+      <div className="w-64 shrink-0 space-y-5">
+
+        <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">{currentYear}</p>
+          <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
+          {currPie.length === 0 ? (
+            <p className="text-xs text-gray-300 text-center py-8">No data</p>
+          ) : (
+            <>
+              <PieChart width={210} height={190}>
+                <Pie data={currPie} cx={105} cy={90} outerRadius={76} innerRadius={40} dataKey="value" strokeWidth={0}>
+                  {currPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                </Pie>
+                <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+              </PieChart>
+              <div className="space-y-1.5 mt-1">
+                {currPie.map(d => (
+                  <div key={d.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
+                      <span className="text-gray-600 truncate">{d.name}</span>
+                    </div>
+                    <span className="font-medium text-gray-700 tabular-nums ml-2 shrink-0">{fmt(d.value)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {prevYear && (
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">{prevYear}</p>
+            <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
+            {prevPie.length === 0 ? (
+              <p className="text-xs text-gray-300 text-center py-8">No data</p>
+            ) : (
+              <>
+                <PieChart width={210} height={190}>
+                  <Pie data={prevPie} cx={105} cy={90} outerRadius={76} dataKey="value" strokeWidth={0}>
+                    {prevPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                  </Pie>
+                  <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+                </PieChart>
+                <div className="space-y-1.5 mt-1">
+                  {prevPie.map(d => (
+                    <div key={d.name} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
+                        <span className="text-gray-600 truncate">{d.name}</span>
+                      </div>
+                      <span className="font-medium text-gray-700 tabular-nums ml-2 shrink-0">{fmt(d.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
       </div>
 
     </div>
