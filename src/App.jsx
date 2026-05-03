@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line } from 'recharts'
 
 const CATEGORIES = [
   'Bars & Nightlife', 'Car Payment / Insurance', 'Clothing', 'Coffee & Drinks',
@@ -1749,6 +1749,8 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
     transactions.map(t => t.date?.slice(0, 4)).filter(y => y?.length === 4)
   )].sort()
 
+  const YEAR_COLORS = ['#0D7377', '#F59E0B', '#A855F7', '#EC4899']
+
   if (years.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
@@ -1758,7 +1760,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
           </svg>
         </div>
         <p className="text-sm font-semibold text-gray-700">No transaction data yet</p>
-        <p className="text-xs text-gray-400">Import transactions to see year-over-year trends</p>
+        <p className="text-xs text-gray-400">Import transactions from multiple years to see year-over-year trends</p>
       </div>
     )
   }
@@ -1766,182 +1768,229 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
   const currentYear = years[years.length - 1]
   const prevYear    = years.length >= 2 ? years[years.length - 2] : null
 
-  function yearMetrics(year) {
-    const debits = transactions.filter(t =>
-      t.date?.startsWith(year) && t.type === 'debit' &&
-      !EXCLUDE_FROM_TOTALS.has(t.category) && !isSaving(t.category)
+  // Per-year metrics
+  const yearMetrics = years.map(year => {
+    const yearDebits = transactions.filter(t =>
+      t.date?.startsWith(year) &&
+      t.type === 'debit' &&
+      !EXCLUDE_FROM_TOTALS.has(t.category) &&
+      !isSaving(t.category)
     )
-    const monthsWithData = new Set(debits.map(t => t.date?.slice(0, 7))).size
-    const variable  = debits.reduce((s, t) => s + t.amount, 0)
-    const fixed     = fixedMonthlyTotal * monthsWithData
-    const total     = variable + fixed
-    const savings   = monthlySavingsTotal * monthsWithData
-    const avgM      = monthsWithData > 0 ? total / monthsWithData : 0
-    return { variable, fixed, total, savings, avgM, monthsWithData }
-  }
+    const monthsWithData = new Set(yearDebits.map(t => t.date?.slice(0, 7))).size
+    const variableSpend  = yearDebits.reduce((s, t) => s + t.amount, 0)
+    const fixedYTD       = fixedMonthlyTotal * monthsWithData
+    const totalSpend     = variableSpend + fixedYTD
+    const savingsYTD     = monthlySavingsTotal * monthsWithData
+    const avgMonthly     = monthsWithData > 0 ? totalSpend / monthsWithData : 0
+    return { year, variableSpend, fixedYTD, totalSpend, savingsYTD, monthsWithData, avgMonthly }
+  })
 
-  const currM = yearMetrics(currentYear)
-  const prevM = prevYear ? yearMetrics(prevYear) : null
+  const currM = yearMetrics.find(m => m.year === currentYear)
+  const prevM = prevYear ? yearMetrics.find(m => m.year === prevYear) : null
 
   function pctChange(curr, prev) {
     if (!prev || prev === 0) return null
     return ((curr - prev) / prev) * 100
   }
 
-  // Pie data: spending by category group for a given year
-  function pieData(year) {
-    return CATEGORY_GROUPS
-      .filter(g => g.name !== 'Savings')
-      .map(g => ({
-        name:  g.name,
-        value: transactions
+  // Monthly grouped bar chart data
+  const monthlyData = MONTHS.map(m => {
+    const entry = { name: m.label.slice(0, 3) }
+    years.forEach(year => {
+      const v = transactions
+        .filter(t =>
+          t.date?.startsWith(`${year}-${m.id}`) &&
+          t.type === 'debit' &&
+          !EXCLUDE_FROM_TOTALS.has(t.category) &&
+          !isSaving(t.category)
+        )
+        .reduce((s, t) => s + t.amount, 0)
+      entry[year] = v > 0 ? v + fixedMonthlyTotal : 0
+    })
+    return entry
+  })
+
+  // YoY delta per month
+  const deltaData = prevYear ? MONTHS.map(m => {
+    const curr  = (monthlyData.find(d => d.name === m.label.slice(0, 3)) || {})[currentYear] || 0
+    const prev  = (monthlyData.find(d => d.name === m.label.slice(0, 3)) || {})[prevYear]    || 0
+    const delta = curr - prev
+    return { name: m.label.slice(0, 3), delta }
+  }).filter(d => d.delta !== 0) : []
+
+  // Cumulative spend line data
+  const cumulData = MONTHS.map((m, idx) => {
+    const entry = { name: m.label.slice(0, 3) }
+    years.forEach(year => {
+      entry[year] = MONTHS.slice(0, idx + 1).reduce((sum, mm) => {
+        const v = transactions
+          .filter(t =>
+            t.date?.startsWith(`${year}-${mm.id}`) &&
+            t.type === 'debit' &&
+            !EXCLUDE_FROM_TOTALS.has(t.category) &&
+            !isSaving(t.category)
+          )
+          .reduce((s, t) => s + t.amount, 0)
+        return sum + (v > 0 ? v + fixedMonthlyTotal : 0)
+      }, 0)
+    })
+    return entry
+  })
+
+  // Category breakdown
+  const catData = CATEGORY_GROUPS
+    .filter(g => g.name !== 'Savings')
+    .map(g => {
+      const totals = {}
+      years.forEach(year => {
+        totals[year] = transactions
           .filter(t => t.date?.startsWith(year) && t.type === 'debit' && g.cats.includes(t.category))
-          .reduce((s, t) => s + t.amount, 0),
-        fill: g.hex,
-      }))
-      .filter(d => d.value > 0)
-  }
+          .reduce((s, t) => s + t.amount, 0)
+      })
+      return { name: g.name, hex: g.hex, totals }
+    })
+    .filter(g => years.some(y => g.totals[y] > 0))
+    .sort((a, b) => (b.totals[currentYear] || 0) - (a.totals[currentYear] || 0))
 
-  const currPie = pieData(currentYear)
-  const prevPie = prevYear ? pieData(prevYear) : []
-
-  const statRows = [
-    { label: 'Total Spend',    curr: currM.total,    prev: prevM?.total,    invert: true  },
-    { label: 'Variable',       curr: currM.variable, prev: prevM?.variable, invert: true  },
-    { label: 'Fixed',          curr: currM.fixed,    prev: prevM?.fixed,    invert: true  },
-    { label: 'Savings',        curr: currM.savings,  prev: prevM?.savings,  invert: false },
-    { label: 'Avg / Month',    curr: currM.avgM,     prev: prevM?.avgM,     invert: true  },
+  const kpiCards = [
+    { label: 'Total Spend',    curr: currM?.totalSpend,    prev: prevM?.totalSpend,    accentColor: '#EF4444', bar: 'bg-red-400/70',  invert: true  },
+    { label: 'Variable Spend', curr: currM?.variableSpend, prev: prevM?.variableSpend, accentColor: '#F59E0B', bar: null,             invert: true  },
+    { label: 'Savings',        curr: currM?.savingsYTD,    prev: prevM?.savingsYTD,    accentColor: '#14A085', bar: null,             invert: false },
+    { label: 'Avg Monthly',    curr: currM?.avgMonthly,    prev: prevM?.avgMonthly,    accentColor: '#0D7377', bar: null,             invert: true  },
   ]
 
   return (
-    <div className="flex gap-6">
+    <div>
 
-      {/* Left: year stats */}
-      <div className="flex-1 min-w-0">
-
-        {/* KPI cards */}
-        <div className="grid grid-cols-2 gap-4 mb-5">
-          {[
-            { label: 'Total Spend', curr: currM.total,   prev: prevM?.total,   accent: '#EF4444', invert: true  },
-            { label: 'Savings',     curr: currM.savings, prev: prevM?.savings, accent: '#14A085', invert: false },
-          ].map(card => {
-            const change = pctChange(card.curr, card.prev)
-            const isGood = change === null ? null : (card.invert ? change < 0 : change > 0)
-            return (
-              <div key={card.label} className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-                <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">{card.label} — {currentYear}</p>
-                <p className={`text-2xl font-bold tabular-nums ${card.curr > 0 ? 'text-white' : 'text-white/20'}`}>
-                  {card.curr > 0 ? fmt(card.curr) : '—'}
-                </p>
-                {change !== null ? (
-                  <div className={`mt-2 flex items-center gap-1 text-xs font-semibold ${isGood ? 'text-[#14A085]' : 'text-red-400'}`}>
-                    <span>{change > 0 ? '▲' : '▼'}</span>
-                    <span>{Math.abs(change).toFixed(1)}% vs {prevYear}</span>
-                  </div>
-                ) : (
-                  <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: card.accent }} />
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Comparison table */}
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="px-5 py-2.5 bg-gray-50/80 border-b border-gray-100 grid" style={{ gridTemplateColumns: '1fr 1fr 1fr auto' }}>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Metric</span>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">{currentYear}</span>
-            {prevYear && <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">{prevYear}</span>}
-            {prevYear && <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide text-right w-20">Change</span>}
-          </div>
-          {statRows.map((row, i) => {
-            const change = pctChange(row.curr, row.prev)
-            const isGood = change === null ? null : (row.invert ? change < 0 : change > 0)
-            return (
-              <div key={row.label} className={`px-5 py-3 grid items-center border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
-                style={{ gridTemplateColumns: '1fr 1fr 1fr auto' }}>
-                <span className="text-sm text-gray-600">{row.label}</span>
-                <span className="text-sm font-semibold text-gray-800 tabular-nums text-right">{row.curr > 0 ? fmt(row.curr) : '—'}</span>
-                {prevYear && <span className="text-sm text-gray-400 tabular-nums text-right">{row.prev > 0 ? fmt(row.prev) : '—'}</span>}
-                {prevYear && (
-                  <span className={`text-xs font-semibold tabular-nums text-right w-20 ${
-                    change === null ? 'text-gray-300'
-                    : isGood ? 'text-[#0D7377]' : 'text-red-400'
-                  }`}>
-                    {change === null ? '—' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`}
-                  </span>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
+      {/* KPI cards */}
+      <div className="grid grid-cols-4 gap-4 mb-5">
+        {kpiCards.map(card => {
+          const change  = pctChange(card.curr, card.prev)
+          const isGood  = change === null ? null : (card.invert ? change < 0 : change > 0)
+          return (
+            <div key={card.label} className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
+              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">{card.label}</p>
+              <p className={`text-2xl font-bold tabular-nums ${card.curr > 0 ? 'text-white' : 'text-white/20'}`}>
+                {card.curr > 0 ? fmt(card.curr) : '—'}
+              </p>
+              {change !== null ? (
+                <div className={`mt-2 flex items-center gap-1 text-xs font-semibold ${isGood ? 'text-[#14A085]' : 'text-red-400'}`}>
+                  <span>{change > 0 ? '▲' : '▼'}</span>
+                  <span>{Math.abs(change).toFixed(1)}% vs {prevYear}</span>
+                </div>
+              ) : (
+                <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: card.accentColor }} />
+              )}
+            </div>
+          )
+        })}
       </div>
 
-      {/* Right: pie charts */}
-      <div className="w-72 shrink-0 space-y-5">
-
-        {/* Donut — current year */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{currentYear}</p>
-          <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
-          {currPie.length === 0 ? (
-            <p className="text-xs text-gray-300 text-center py-8">No data</p>
-          ) : (
-            <>
-              <PieChart width={220} height={200}>
-                <Pie data={currPie} cx={110} cy={95} outerRadius={80} innerRadius={44} dataKey="value" strokeWidth={0}>
-                  {currPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                </Pie>
-                <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-              </PieChart>
-              <div className="space-y-1.5 mt-2">
-                {currPie.map(d => (
-                  <div key={d.name} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
-                      <span className="text-gray-600">{d.name}</span>
-                    </div>
-                    <span className="font-medium text-gray-700 tabular-nums">{fmt(d.value)}</span>
-                  </div>
-                ))}
+      {/* Monthly comparison chart */}
+      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Monthly Spending by Year</p>
+            <p className="text-xs text-gray-400 mt-0.5">Variable + fixed costs combined</p>
+          </div>
+          <div className="flex items-center gap-4">
+            {years.map((y, i) => (
+              <div key={y} className="flex items-center gap-1.5 text-xs text-gray-500">
+                <span className="w-3 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: YEAR_COLORS[i] }} />
+                {y}
               </div>
-            </>
-          )}
+            ))}
+          </div>
+        </div>
+        <BarChart width={940} height={260} data={monthlyData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+          <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+          <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
+          <Tooltip formatter={(v, name) => [fmt(v), name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} cursor={{ fill: '#F3F4F6' }} />
+          {years.map((year, i) => (
+            <Bar key={year} dataKey={year} fill={YEAR_COLORS[i]} radius={[3, 3, 0, 0]} maxBarSize={32} />
+          ))}
+        </BarChart>
+      </div>
+
+      {/* Cumulative spend + delta row */}
+      <div className="flex gap-5 mb-5">
+
+        {/* Cumulative spend */}
+        <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
+          <p className="text-sm font-semibold text-gray-800 mb-1">Cumulative Spend</p>
+          <p className="text-xs text-gray-400 mb-4">Running total through the year</p>
+          <LineChart width={460} height={200} data={cumulData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+            <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
+            <Tooltip formatter={(v, name) => [fmt(v), name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+            {years.map((year, i) => (
+              <Line key={year} type="monotone" dataKey={year} stroke={YEAR_COLORS[i]} strokeWidth={2} dot={false} />
+            ))}
+          </LineChart>
         </div>
 
-        {/* Regular pie — previous year */}
-        {prevYear && (
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{prevYear}</p>
-            <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
-            {prevPie.length === 0 ? (
-              <p className="text-xs text-gray-300 text-center py-8">No data</p>
-            ) : (
-              <>
-                <PieChart width={220} height={200}>
-                  <Pie data={prevPie} cx={110} cy={95} outerRadius={80} dataKey="value" strokeWidth={0}>
-                    {prevPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-                </PieChart>
-                <div className="space-y-1.5 mt-2">
-                  {prevPie.map(d => (
-                    <div key={d.name} className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
-                        <span className="text-gray-600">{d.name}</span>
-                      </div>
-                      <span className="font-medium text-gray-700 tabular-nums">{fmt(d.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
+        {/* YoY delta */}
+        {prevYear && deltaData.length > 0 && (
+          <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
+            <p className="text-sm font-semibold text-gray-800 mb-1">Month Delta</p>
+            <p className="text-xs text-gray-400 mb-4">{currentYear} vs {prevYear} — teal = spent less</p>
+            <BarChart width={460} height={200} data={deltaData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={v => fmtK(Math.abs(v))} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
+              <ReferenceLine y={0} stroke="#E5E7EB" strokeWidth={1} />
+              <Tooltip formatter={v => [fmt(Math.abs(v)), v >= 0 ? `More in ${currentYear}` : `Less in ${currentYear}`]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+              <Bar dataKey="delta" radius={[3, 3, 0, 0]} maxBarSize={32}>
+                {deltaData.map((entry, i) => (
+                  <Cell key={i} fill={entry.delta <= 0 ? '#0D7377' : '#EF4444'} />
+                ))}
+              </Bar>
+            </BarChart>
           </div>
         )}
 
       </div>
+
+      {/* Category breakdown */}
+      <div className="bg-white rounded-xl border border-gray-100 p-6">
+        <p className="text-sm font-semibold text-gray-800 mb-5">Spending by Category Group</p>
+        {catData.length === 0 ? (
+          <p className="text-xs text-gray-300 text-center py-6">No category data available</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-10 gap-y-5">
+            {catData.map(g => {
+              const maxVal = Math.max(...years.map(y => g.totals[y] || 0), 1)
+              return (
+                <div key={g.name}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.hex }} />
+                    <span className="text-xs font-semibold text-gray-700">{g.name}</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {years.map((year, i) => (
+                      <div key={year} className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-400 w-8 shrink-0 tabular-nums">{year}</span>
+                        <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${((g.totals[year] || 0) / maxVal) * 100}%`,
+                              backgroundColor: YEAR_COLORS[i],
+                            }}
+                          />
+                        </div>
+                        <span className="text-[10px] font-semibold text-gray-600 tabular-nums w-18 text-right shrink-0" style={{ minWidth: '4.5rem' }}>
+                          {g.totals[year] > 0 ? fmt(g.totals[year]) : '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
     </div>
   )
 }
