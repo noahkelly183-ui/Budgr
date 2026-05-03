@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie } from 'recharts'
 
 const CATEGORIES = [
   'Bars & Nightlife', 'Car Payment / Insurance', 'Clothing', 'Coffee & Drinks',
