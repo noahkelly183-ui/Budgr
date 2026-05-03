@@ -811,10 +811,7 @@ function SavingsPage({ savingsEntries, onAdd, onDelete }) {
 
 // ─── MonthlyDashboard ─────────────────────────────────────────────────────────
 
-function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts, savingsEntries }) {
-  const [variableOpen, setVariableOpen] = useState(true)
-  const [fixedOpen, setFixedOpen]       = useState(true)
-  const [savingsOpen, setSavingsOpen]   = useState(true)
+function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts, savingsEntries, variableOpen, setVariableOpen, fixedOpen, setFixedOpen, savingsOpen, setSavingsOpen }) {
 
   const monthTxns = txns.filter(t => yearMonthOf(t.date) === APP_YEAR + '-' + selectedMonth)
   const allDebits   = monthTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
@@ -2234,6 +2231,9 @@ export default function App() {
   const [dedupKeyCache, setDedupKeyCache]   = useState(new Set())
   const [csvUploads, setCsvUploads]         = useState([])
   const [uploadHistoryOpen, setUploadHistoryOpen] = useState(true)
+  const [dashVariableOpen, setDashVariableOpen] = useState(true)
+  const [dashFixedOpen, setDashFixedOpen]       = useState(true)
+  const [dashSavingsOpen, setDashSavingsOpen]   = useState(true)
   const dataLoadedFor   = useRef(null)
   const salaryTimerRef  = useRef(null)
 
@@ -2747,6 +2747,9 @@ export default function App() {
               salary={salary}
               fixedCosts={fixedCosts}
               savingsEntries={savingsEntries}
+              variableOpen={dashVariableOpen} setVariableOpen={setDashVariableOpen}
+              fixedOpen={dashFixedOpen}       setFixedOpen={setDashFixedOpen}
+              savingsOpen={dashSavingsOpen}   setSavingsOpen={setDashSavingsOpen}
             />
           )}
 
