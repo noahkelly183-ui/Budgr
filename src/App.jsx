@@ -929,48 +929,49 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
             </div>
           </button>
 
-          {variableOpen && <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide w-28">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Merchant</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Category</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide w-24">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {monthTxns.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-xs">
-                    No transactions this month
-                  </td>
+          {variableOpen && <>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide w-28">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Merchant</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Category</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide w-24">Amount</th>
                 </tr>
-              ) : monthTxns.map((t, i) => (
-                <tr key={t.id} className={`border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                  <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">{fmtDate(t.date)}</td>
-                  <td className="px-4 py-2.5 text-gray-700 text-sm">
-                    <div className="flex items-center gap-1.5">
-                      {t.fromMemory && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" title="Auto-categorized from memory" />
-                      )}
-                      {t.description}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <CategoryCombobox value={t.category} onChange={cat => setCategory(t.id, cat)} />
-                  </td>
-                  <td className={`px-4 py-2.5 text-sm font-semibold tabular-nums text-right whitespace-nowrap ${t.type === 'credit' ? 'text-[#0D7377]' : 'text-gray-800'}`}>
-                    {t.type === 'credit' ? '+ ' : ''}{fmt(t.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/60 flex justify-between items-center">
-            <span className="text-xs font-medium text-gray-500">Variable total</span>
-            <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(txnSpent)}</span>
-          </div>}
+              </thead>
+              <tbody>
+                {monthTxns.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-xs">
+                      No transactions this month
+                    </td>
+                  </tr>
+                ) : monthTxns.map((t, i) => (
+                  <tr key={t.id} className={`border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                    <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">{fmtDate(t.date)}</td>
+                    <td className="px-4 py-2.5 text-gray-700 text-sm">
+                      <div className="flex items-center gap-1.5">
+                        {t.fromMemory && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" title="Auto-categorized from memory" />
+                        )}
+                        {t.description}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <CategoryCombobox value={t.category} onChange={cat => setCategory(t.id, cat)} />
+                    </td>
+                    <td className={`px-4 py-2.5 text-sm font-semibold tabular-nums text-right whitespace-nowrap ${t.type === 'credit' ? 'text-[#0D7377]' : 'text-gray-800'}`}>
+                      {t.type === 'credit' ? '+ ' : ''}{fmt(t.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/60 flex justify-between items-center">
+              <span className="text-xs font-medium text-gray-500">Variable total</span>
+              <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(txnSpent)}</span>
+            </div>
+          </>}
 
           {fixedCosts.length > 0 && (
             <>
