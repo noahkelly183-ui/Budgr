@@ -884,6 +884,10 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
         {/* Income statement card */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-5">
 
+          <div className="px-5 py-2.5 bg-gray-50/80 border-b border-gray-100">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Monthly Summary</span>
+          </div>
+
           <div className="flex items-center justify-between px-5 py-3.5" style={{ backgroundColor: '#F0FDF4' }}>
             <span className="text-sm text-gray-600">Net Income</span>
             <span className={`text-sm font-semibold tabular-nums ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
