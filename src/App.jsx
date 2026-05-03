@@ -845,6 +845,49 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
       {/* Left panel */}
       <div className="flex-1 min-w-0">
 
+        {/* KPI cards */}
+        <div className="grid grid-cols-4 gap-4 mb-5">
+
+          <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
+            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Net Income</p>
+            <p className={`text-2xl font-bold tabular-nums ${monthlyNet > 0 ? 'text-white' : 'text-white/20'}`}>
+              {monthlyNet > 0 ? fmt(monthlyNet) : '—'}
+            </p>
+            <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: '#0D7377' }} />
+          </div>
+
+          <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
+            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Total Expenses</p>
+            <p className={`text-2xl font-bold tabular-nums ${totalSpent > 0 ? 'text-white' : 'text-white/20'}`}>
+              {totalSpent > 0 ? fmt(totalSpent) : '—'}
+            </p>
+            <div className="mt-3 h-[3px] w-7 rounded-full bg-red-400/70" />
+          </div>
+
+          <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
+            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Savings</p>
+            <p className={`text-2xl font-bold tabular-nums ${totalSavings > 0 ? 'text-white' : 'text-white/20'}`}>
+              {totalSavings > 0 ? fmt(totalSavings) : '—'}
+            </p>
+            <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: totalSavings > 0 ? '#14A085' : '#374151' }} />
+          </div>
+
+          <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
+            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Savings Rate</p>
+            <p className={`text-2xl font-bold tabular-nums ${
+              savingsRate === null ? 'text-white/20'
+              : savingsRate >= 20 ? 'text-[#14A085]'
+              : savingsRate >= 10 ? 'text-amber-400'
+              : 'text-red-400'
+            }`}>
+              {savingsRate === null ? '—' : savingsRate.toFixed(1) + '%'}
+            </p>
+            <div className="mt-3 h-[3px] w-7 rounded-full"
+              style={{ backgroundColor: savingsRate === null ? '#374151' : savingsRate >= 20 ? '#0D7377' : savingsRate >= 10 ? '#F59E0B' : '#EF4444' }} />
+          </div>
+
+        </div>
+
         {/* Income statement card */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-5">
 
