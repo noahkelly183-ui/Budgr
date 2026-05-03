@@ -949,18 +949,25 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
 
         {/* Transaction table */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+
+          <div className="px-4 py-2.5 bg-gray-50/80 flex items-center justify-between border-b border-gray-100">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Variable Spending</span>
+            <span className="text-xs text-gray-400">{monthTxns.length} transaction{monthTxns.length !== 1 ? 's' : ''}</span>
+          </div>
+
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide w-28">Date</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Merchant</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Category</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide w-24">Amount</th>
               </tr>
             </thead>
             <tbody>
               {monthTxns.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-gray-400 text-xs">
+                  <td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-xs">
                     No transactions this month
                   </td>
                 </tr>
@@ -978,10 +985,18 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
                   <td className="px-4 py-2.5">
                     <CategoryCombobox value={t.category} onChange={cat => setCategory(t.id, cat)} />
                   </td>
+                  <td className={`px-4 py-2.5 text-sm font-semibold tabular-nums text-right whitespace-nowrap ${t.type === 'credit' ? 'text-[#0D7377]' : 'text-gray-800'}`}>
+                    {t.type === 'credit' ? '+ ' : ''}{fmt(t.amount)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+
+          <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/60 flex justify-between items-center">
+            <span className="text-xs font-medium text-gray-500">Variable total</span>
+            <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(txnSpent)}</span>
+          </div>
 
           {fixedCosts.length > 0 && (
             <>
