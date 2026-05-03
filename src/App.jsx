@@ -316,8 +316,7 @@ function TransactionView({ txns, setCategory }) {
   const COLS = '96px 1fr 120px 180px'
 
   return (
-    <div className="flex gap-5">
-      <div className="flex-1 min-w-0">
+    <div>
 
         {/* Filter bar */}
         <div className="flex items-center gap-2 mb-4">
@@ -419,42 +418,6 @@ function TransactionView({ txns, setCategory }) {
           })}
         </div>
 
-      </div>
-
-      <div className="w-56 shrink-0">
-        <div className="bg-[#0D7377] rounded-t-xl px-4 py-3">
-          <p className="text-white text-sm font-medium">Summary</p>
-        </div>
-        <div className="bg-white border border-gray-100 rounded-b-xl px-4 py-3 space-y-2">
-          {CATEGORIES
-            .filter(cat => !EXCLUDE_FROM_TOTALS.has(cat) && cat !== 'Refund / Return')
-            .map(cat => {
-              const catTotal = txns
-                .filter(t => t.type === 'debit' && t.category === cat)
-                .reduce((sum, t) => sum + t.amount, 0)
-              return (
-                <div key={cat} className="flex justify-between items-center text-xs">
-                  <span className={`truncate mr-2 ${catTotal > 0 ? 'text-gray-600' : 'text-gray-300'}`}>{cat}</span>
-                  <span className={`font-medium tabular-nums shrink-0 ${catTotal > 0 ? 'text-gray-800' : 'text-gray-300'}`}>
-                    {fmt(catTotal)}
-                  </span>
-                </div>
-              )
-            })}
-          <div className="border-t border-gray-100 pt-2 space-y-1.5">
-            <div className="flex justify-between items-center text-xs">
-              <span className={totalRefunds > 0 ? 'text-green-600' : 'text-gray-300'}>↑ Refund / Return</span>
-              <span className={`font-medium tabular-nums ${totalRefunds > 0 ? 'text-green-600' : 'text-gray-300'}`}>
-                {fmt(totalRefunds)}
-              </span>
-            </div>
-            <div className="flex justify-between text-xs font-medium">
-              <span className="text-gray-700">Total</span>
-              <span className="text-gray-900">{fmt(total)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
