@@ -579,13 +579,15 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
   function setLocal(id, field, val) {
     setLocalVals(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }))
   }
+  function fmtAmt(n) { return Number(n).toLocaleString('en-US') }
   function commitText(cost, field) {
-    const val = getLocal(cost.id, field, field === 'name' ? cost.name : String(cost.amount))
+    const val = getLocal(cost.id, field, field === 'name' ? cost.name : fmtAmt(cost.amount))
     if (field === 'name') {
       if (!val.trim() || val.trim() === cost.name) return
       onUpdate(cost.id, { name: val.trim(), amount: cost.amount, category: cost.category, frequency: cost.frequency ?? 'monthly' })
     } else {
-      const parsed = parseFloat(val)
+      const parsed = parseFloat(String(val).replace(/,/g, ''))
+      setLocal(cost.id, 'amount', parsed > 0 ? fmtAmt(parsed) : fmtAmt(cost.amount))
       if (!parsed || parsed === cost.amount) return
       onUpdate(cost.id, { name: cost.name, amount: parsed, category: cost.category, frequency: cost.frequency ?? 'monthly' })
     }
@@ -672,7 +674,7 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
 
           {filtered.map(cost => {
             const isAnnual = (cost.frequency ?? 'monthly') === 'annual'
-            const localAmt = getLocal(cost.id, 'amount', String(cost.amount))
+            const localAmt = getLocal(cost.id, 'amount', fmtAmt(cost.amount))
             const localCat = getLocal(cost.id, 'category', cost.category)
             const hex = CATEGORY_COLOR[localCat] || '#9CA3AF'
             return (
@@ -699,12 +701,12 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
                 <div className="flex items-center gap-1 shrink-0 w-28 justify-end">
                   <span className="text-xs text-gray-400">$</span>
                   <input
-                    type="number" min="0"
+                    type="text"
                     value={localAmt}
                     onChange={e => setLocal(cost.id, 'amount', e.target.value)}
                     onBlur={() => commitText(cost, 'amount')}
                     onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                    className="w-20 text-sm font-semibold text-gray-800 tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="w-20 text-sm font-semibold text-gray-800 tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all"
                   />
                   {isAnnual && <span className="text-[10px] text-gray-400">/yr</span>}
                 </div>
@@ -764,13 +766,15 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
   function setLocal(id, field, val) {
     setLocalVals(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }))
   }
+  function fmtAmt(n) { return Number(n).toLocaleString('en-US') }
   function commitText(entry, field) {
-    const val = getLocal(entry.id, field, field === 'name' ? entry.name : String(entry.amount))
+    const val = getLocal(entry.id, field, field === 'name' ? entry.name : fmtAmt(entry.amount))
     if (field === 'name') {
       if (!val.trim() || val.trim() === entry.name) return
       onUpdate(entry.id, { name: val.trim(), amount: entry.amount, category: entry.category, frequency: entry.frequency ?? 'monthly' })
     } else {
-      const parsed = parseFloat(val)
+      const parsed = parseFloat(String(val).replace(/,/g, ''))
+      setLocal(entry.id, 'amount', parsed > 0 ? fmtAmt(parsed) : fmtAmt(entry.amount))
       if (!parsed || parsed === entry.amount) return
       onUpdate(entry.id, { name: entry.name, amount: parsed, category: entry.category, frequency: entry.frequency ?? 'monthly' })
     }
@@ -845,7 +849,7 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
 
           {filtered.map(entry => {
             const isAnnual = (entry.frequency ?? 'monthly') === 'annual'
-            const localAmt = getLocal(entry.id, 'amount', String(entry.amount))
+            const localAmt = getLocal(entry.id, 'amount', fmtAmt(entry.amount))
             const localCat = getLocal(entry.id, 'category', entry.category)
             const hex = CATEGORY_COLOR[localCat] || '#14A085'
             return (
@@ -872,12 +876,12 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
                 <div className="flex items-center gap-1 shrink-0 w-28 justify-end">
                   <span className="text-xs text-gray-400">$</span>
                   <input
-                    type="number" min="0"
+                    type="text"
                     value={localAmt}
                     onChange={e => setLocal(entry.id, 'amount', e.target.value)}
                     onBlur={() => commitText(entry, 'amount')}
                     onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                    className="w-20 text-sm font-semibold text-[#0D7377] tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="w-20 text-sm font-semibold text-[#0D7377] tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all"
                   />
                   {isAnnual && <span className="text-[10px] text-gray-400">/yr</span>}
                 </div>
