@@ -1876,12 +1876,9 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
   const prevPie = prevYear ? buildPie(prevYear) : []
 
   return (
-    <div className="flex gap-5 items-start">
+    <div>
 
-      {/* Main content */}
-      <div className="flex-1 min-w-0">
-
-      {/* KPI cards */}
+      {/* KPI cards — full width */}
       <div className="grid grid-cols-4 gap-4 mb-5">
         {kpiCards.map(card => {
           const change  = pctChange(card.curr, card.prev)
@@ -1905,31 +1902,98 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
         })}
       </div>
 
-      {/* Monthly comparison chart */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-sm font-semibold text-gray-800">Monthly Spending by Year</p>
-            <p className="text-xs text-gray-400 mt-0.5">Variable + fixed costs combined</p>
+      {/* Bar chart + pie charts side by side */}
+      <div className="flex gap-5 items-start mb-5">
+
+        {/* Monthly comparison chart */}
+        <div className="flex-1 min-w-0 bg-white rounded-xl border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Monthly Spending by Year</p>
+              <p className="text-xs text-gray-400 mt-0.5">Variable + fixed costs combined</p>
+            </div>
+            <div className="flex items-center gap-4">
+              {years.map((y, i) => (
+                <div key={y} className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <span className="w-3 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: YEAR_COLORS[i] }} />
+                  {y}
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            {years.map((y, i) => (
-              <div key={y} className="flex items-center gap-1.5 text-xs text-gray-500">
-                <span className="w-3 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: YEAR_COLORS[i] }} />
-                {y}
-              </div>
+          <BarChart width={620} height={260} data={monthlyData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+            <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
+            <Tooltip formatter={(v, name) => [fmt(v), name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} cursor={{ fill: '#F3F4F6' }} />
+            {years.map((year, i) => (
+              <Bar key={year} dataKey={year} fill={YEAR_COLORS[i]} radius={[3, 3, 0, 0]} maxBarSize={32} />
             ))}
-          </div>
+          </BarChart>
         </div>
-        <BarChart width={940} height={260} data={monthlyData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-          <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-          <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-          <Tooltip formatter={(v, name) => [fmt(v), name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} cursor={{ fill: '#F3F4F6' }} />
-          {years.map((year, i) => (
-            <Bar key={year} dataKey={year} fill={YEAR_COLORS[i]} radius={[3, 3, 0, 0]} maxBarSize={32} />
-          ))}
-        </BarChart>
-      </div>
+
+        {/* Pie charts column */}
+        <div className="w-64 shrink-0 space-y-5">
+
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">{currentYear}</p>
+            <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
+            {currPie.length === 0 ? (
+              <p className="text-xs text-gray-300 text-center py-8">No data</p>
+            ) : (
+              <>
+                <PieChart width={210} height={190}>
+                  <Pie data={currPie} cx={105} cy={90} outerRadius={76} innerRadius={40} dataKey="value" strokeWidth={0}>
+                    {currPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                  </Pie>
+                  <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+                </PieChart>
+                <div className="space-y-1.5 mt-1">
+                  {currPie.map(d => (
+                    <div key={d.name} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
+                        <span className="text-gray-600 truncate">{d.name}</span>
+                      </div>
+                      <span className="font-medium text-gray-700 tabular-nums ml-2 shrink-0">{fmt(d.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {prevYear && (
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">{prevYear}</p>
+              <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
+              {prevPie.length === 0 ? (
+                <p className="text-xs text-gray-300 text-center py-8">No data</p>
+              ) : (
+                <>
+                  <PieChart width={210} height={190}>
+                    <Pie data={prevPie} cx={105} cy={90} outerRadius={76} dataKey="value" strokeWidth={0}>
+                      {prevPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                    </Pie>
+                    <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+                  </PieChart>
+                  <div className="space-y-1.5 mt-1">
+                    {prevPie.map(d => (
+                      <div key={d.name} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
+                          <span className="text-gray-600 truncate">{d.name}</span>
+                        </div>
+                        <span className="font-medium text-gray-700 tabular-nums ml-2 shrink-0">{fmt(d.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+        </div>{/* end pie column */}
+      </div>{/* end bar+pie row */}
 
       {/* Cumulative spend + delta row */}
       <div className="flex gap-5 mb-5">
@@ -2008,71 +2072,6 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
             })}
           </div>
         )}
-      </div>
-
-      </div>{/* end main content */}
-
-      {/* Right: pie charts */}
-      <div className="w-64 shrink-0 space-y-5">
-
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">{currentYear}</p>
-          <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
-          {currPie.length === 0 ? (
-            <p className="text-xs text-gray-300 text-center py-8">No data</p>
-          ) : (
-            <>
-              <PieChart width={210} height={190}>
-                <Pie data={currPie} cx={105} cy={90} outerRadius={76} innerRadius={40} dataKey="value" strokeWidth={0}>
-                  {currPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                </Pie>
-                <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-              </PieChart>
-              <div className="space-y-1.5 mt-1">
-                {currPie.map(d => (
-                  <div key={d.name} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
-                      <span className="text-gray-600 truncate">{d.name}</span>
-                    </div>
-                    <span className="font-medium text-gray-700 tabular-nums ml-2 shrink-0">{fmt(d.value)}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        {prevYear && (
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">{prevYear}</p>
-            <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
-            {prevPie.length === 0 ? (
-              <p className="text-xs text-gray-300 text-center py-8">No data</p>
-            ) : (
-              <>
-                <PieChart width={210} height={190}>
-                  <Pie data={prevPie} cx={105} cy={90} outerRadius={76} dataKey="value" strokeWidth={0}>
-                    {prevPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-                </PieChart>
-                <div className="space-y-1.5 mt-1">
-                  {prevPie.map(d => (
-                    <div key={d.name} className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
-                        <span className="text-gray-600 truncate">{d.name}</span>
-                      </div>
-                      <span className="font-medium text-gray-700 tabular-nums ml-2 shrink-0">{fmt(d.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
       </div>
 
     </div>
