@@ -566,13 +566,33 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
 // ─── FixedCostsPage ───────────────────────────────────────────────────────────
 
 function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
-  const [name, setName]           = useState('')
-  const [amount, setAmount]       = useState('')
-  const [category, setCategory]   = useState('')
-  const [frequency, setFrequency] = useState('monthly')
+  const [name, setName]             = useState('')
+  const [amount, setAmount]         = useState('')
+  const [category, setCategory]     = useState('')
+  const [frequency, setFrequency]   = useState('monthly')
   const [freqFilter, setFreqFilter] = useState('all')
-  const [editingId, setEditingId] = useState(null)
-  const [editState, setEditState] = useState({})
+  const [localVals, setLocalVals]   = useState({})
+
+  function getLocal(id, field, fallback) {
+    return localVals[id]?.[field] ?? fallback
+  }
+  function setLocal(id, field, val) {
+    setLocalVals(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }))
+  }
+  function commitText(cost, field) {
+    const val = getLocal(cost.id, field, field === 'name' ? cost.name : String(cost.amount))
+    if (field === 'name') {
+      if (!val.trim() || val.trim() === cost.name) return
+      onUpdate(cost.id, { name: val.trim(), amount: cost.amount, category: cost.category, frequency: cost.frequency ?? 'monthly' })
+    } else {
+      const parsed = parseFloat(val)
+      if (!parsed || parsed === cost.amount) return
+      onUpdate(cost.id, { name: cost.name, amount: parsed, category: cost.category, frequency: cost.frequency ?? 'monthly' })
+    }
+  }
+  function commitSelect(cost, field, val) {
+    onUpdate(cost.id, { name: cost.name, amount: cost.amount, category: cost.category, frequency: cost.frequency ?? 'monthly', [field]: val })
+  }
 
   function handleAdd() {
     const parsed = parseFloat(amount)
@@ -581,23 +601,13 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
     setName(''); setAmount(''); setCategory(''); setFrequency('monthly')
   }
 
-  function startEdit(cost) {
-    setEditingId(cost.id)
-    setEditState({ name: cost.name, amount: String(cost.amount), category: cost.category, frequency: cost.frequency ?? 'monthly' })
-  }
-
-  function saveEdit(id) {
-    const parsed = parseFloat(editState.amount)
-    if (!editState.name.trim() || !parsed || !editState.category) return
-    onUpdate(id, { name: editState.name.trim(), amount: parsed, category: editState.category, frequency: editState.frequency })
-    setEditingId(null)
-  }
-
-  const filtered = freqFilter === 'all' ? fixedCosts : fixedCosts.filter(c => (c.frequency ?? 'monthly') === freqFilter)
+  const filtered     = freqFilter === 'all' ? fixedCosts : fixedCosts.filter(c => (c.frequency ?? 'monthly') === freqFilter)
   const monthlyTotal = fixedCosts.reduce((s, c) => s + monthlyRate(c), 0)
 
-  const inputCls = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
-  const selectCls = inputCls + ' bg-white'
+  const cellInput  = 'w-full border border-transparent rounded-lg px-2.5 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] hover:border-gray-200 bg-transparent focus:bg-white transition-all'
+  const cellSelect = cellInput + ' bg-white cursor-pointer'
+  const addInput   = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
+  const addSelect  = addInput + ' bg-white'
 
   return (
     <div className="max-w-2xl">
@@ -605,21 +615,18 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
       <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
         <h2 className="text-sm font-semibold text-gray-800 mb-5">Add Fixed Cost</h2>
         <div className="flex gap-3 items-end flex-wrap">
-
           <div className="flex-1 min-w-40">
             <label className="block text-xs text-gray-500 mb-1.5">Name</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. Rent" className={inputCls} />
+              onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. Rent" className={addInput} />
           </div>
-
           <div className="w-36">
             <label className="block text-xs text-gray-500 mb-1.5">Frequency</label>
-            <select value={frequency} onChange={e => setFrequency(e.target.value)} className={selectCls}>
+            <select value={frequency} onChange={e => setFrequency(e.target.value)} className={addSelect}>
               <option value="monthly">Monthly</option>
               <option value="annual">Annual</option>
             </select>
           </div>
-
           <div className="w-36">
             <label className="block text-xs text-gray-500 mb-1.5">Amount ({frequency === 'annual' ? 'per year' : 'per month'})</label>
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
@@ -629,22 +636,19 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
                 className="flex-1 px-2.5 py-2 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
           </div>
-
           <div className="w-48">
             <label className="block text-xs text-gray-500 mb-1.5">Category</label>
-            <select value={category} onChange={e => setCategory(e.target.value)} className={selectCls}>
+            <select value={category} onChange={e => setCategory(e.target.value)} className={addSelect}>
               <option value="">Select category…</option>
               {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
           </div>
-
           <button onClick={handleAdd} disabled={!name.trim() || !amount || !category}
             className="px-5 py-2 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
-
         </div>
       </div>
 
@@ -660,7 +664,7 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
             <div className="flex items-center gap-1">
               {['all', 'monthly', 'annual'].map(f => (
                 <button key={f} onClick={() => setFreqFilter(f)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors capitalize ${freqFilter === f ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${freqFilter === f ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
                   {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
@@ -669,72 +673,52 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
           </div>
 
           {filtered.map(cost => {
-            const hex = CATEGORY_COLOR[cost.category] || '#9CA3AF'
             const isAnnual = (cost.frequency ?? 'monthly') === 'annual'
-            if (editingId === cost.id) {
-              const isEditAnnual = editState.frequency === 'annual'
-              return (
-                <div key={cost.id} className="px-5 py-3 border-b border-gray-50 bg-gray-50/50">
-                  <div className="flex gap-2 items-end flex-wrap">
-                    <div className="flex-1 min-w-32">
-                      <label className="block text-[10px] text-gray-400 mb-1">Name</label>
-                      <input value={editState.name} onChange={e => setEditState(s => ({ ...s, name: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors" />
-                    </div>
-                    <div className="w-28">
-                      <label className="block text-[10px] text-gray-400 mb-1">Frequency</label>
-                      <select value={editState.frequency} onChange={e => setEditState(s => ({ ...s, frequency: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] bg-white transition-colors">
-                        <option value="monthly">Monthly</option>
-                        <option value="annual">Annual</option>
-                      </select>
-                    </div>
-                    <div className="w-32">
-                      <label className="block text-[10px] text-gray-400 mb-1">Amount ({isEditAnnual ? '/yr' : '/mo'})</label>
-                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377]">
-                        <span className="px-2 py-1.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200">$</span>
-                        <input type="number" min="0" value={editState.amount} onChange={e => setEditState(s => ({ ...s, amount: e.target.value }))}
-                          className="flex-1 px-2 py-1.5 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                      </div>
-                    </div>
-                    <div className="w-44">
-                      <label className="block text-[10px] text-gray-400 mb-1">Category</label>
-                      <select value={editState.category} onChange={e => setEditState(s => ({ ...s, category: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] bg-white transition-colors">
-                        {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => saveEdit(cost.id)}
-                        className="px-3 py-1.5 bg-[#0D7377] text-white text-xs font-medium rounded-lg hover:bg-[#0b6165] transition-colors">
-                        Save
-                      </button>
-                      <button onClick={() => setEditingId(null)}
-                        className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors">
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )
-            }
+            const localAmt = getLocal(cost.id, 'amount', String(cost.amount))
             return (
-              <div key={cost.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-50 last:border-0 group">
-                <span className="flex-1 text-sm text-gray-700 font-medium">{cost.name}</span>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${isAnnual ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
-                  {isAnnual ? 'Annual' : 'Monthly'}
-                </span>
-                <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
-                  {cost.category}
-                </span>
-                <div className="text-right shrink-0 w-28">
-                  <p className="text-sm font-semibold text-gray-800 tabular-nums">{fmt(isAnnual ? cost.amount : cost.amount)}</p>
-                  {isAnnual && <p className="text-[10px] text-gray-400 tabular-nums">{fmt(cost.amount / 12)}/mo</p>}
+              <div key={cost.id} className="grid items-center gap-2 px-4 py-2.5 border-b border-gray-50 last:border-0"
+                style={{ gridTemplateColumns: '1fr 110px 100px 160px 28px' }}>
+
+                <input
+                  type="text"
+                  value={getLocal(cost.id, 'name', cost.name)}
+                  onChange={e => setLocal(cost.id, 'name', e.target.value)}
+                  onBlur={() => commitText(cost, 'name')}
+                  onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                  className={cellInput}
+                />
+
+                <select
+                  value={getLocal(cost.id, 'frequency', cost.frequency ?? 'monthly')}
+                  onChange={e => { setLocal(cost.id, 'frequency', e.target.value); commitSelect(cost, 'frequency', e.target.value) }}
+                  className={cellSelect}>
+                  <option value="monthly">Monthly</option>
+                  <option value="annual">Annual</option>
+                </select>
+
+                <div className="flex items-center border border-transparent rounded-lg overflow-hidden hover:border-gray-200 focus-within:border-[#0D7377] transition-all focus-within:bg-white">
+                  <span className="px-1.5 py-1.5 text-gray-400 text-xs select-none shrink-0">$</span>
+                  <input
+                    type="number" min="0"
+                    value={localAmt}
+                    onChange={e => setLocal(cost.id, 'amount', e.target.value)}
+                    onBlur={() => commitText(cost, 'amount')}
+                    onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                    className="flex-1 py-1.5 pr-1.5 text-sm text-gray-800 outline-none w-0 bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  {isAnnual && <span className="pr-1.5 text-[10px] text-gray-400 shrink-0">/yr</span>}
                 </div>
-                <button onClick={() => startEdit(cost)} className="text-gray-300 hover:text-[#0D7377] transition-colors text-sm shrink-0" title="Edit">✎</button>
-                <button onClick={() => onDelete(cost.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 ml-1" title="Remove">✕</button>
+
+                <select
+                  value={getLocal(cost.id, 'category', cost.category)}
+                  onChange={e => { setLocal(cost.id, 'category', e.target.value); commitSelect(cost, 'category', e.target.value) }}
+                  className={cellSelect}>
+                  {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
+                <button onClick={() => onDelete(cost.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none" title="Remove">✕</button>
               </div>
             )
           })}
@@ -753,13 +737,12 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
 // ─── SavingsPage ─────────────────────────────────────────────────────────────
 
 function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
-  const [name, setName]           = useState('')
-  const [amount, setAmount]       = useState('')
-  const [category, setCategory]   = useState('')
-  const [frequency, setFrequency] = useState('monthly')
+  const [name, setName]             = useState('')
+  const [amount, setAmount]         = useState('')
+  const [category, setCategory]     = useState('')
+  const [frequency, setFrequency]   = useState('monthly')
   const [freqFilter, setFreqFilter] = useState('all')
-  const [editingId, setEditingId] = useState(null)
-  const [editState, setEditState] = useState({})
+  const [localVals, setLocalVals]   = useState({})
 
   function handleAdd() {
     const parsed = parseFloat(amount)
@@ -768,23 +751,34 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
     setName(''); setAmount(''); setCategory(''); setFrequency('monthly')
   }
 
-  function startEdit(entry) {
-    setEditingId(entry.id)
-    setEditState({ name: entry.name, amount: String(entry.amount), category: entry.category, frequency: entry.frequency ?? 'monthly' })
-  }
-
-  function saveEdit(id) {
-    const parsed = parseFloat(editState.amount)
-    if (!editState.name.trim() || !parsed || !editState.category) return
-    onUpdate(id, { name: editState.name.trim(), amount: parsed, category: editState.category, frequency: editState.frequency })
-    setEditingId(null)
-  }
-
-  const filtered = freqFilter === 'all' ? savingsEntries : savingsEntries.filter(e => (e.frequency ?? 'monthly') === freqFilter)
+  const filtered     = freqFilter === 'all' ? savingsEntries : savingsEntries.filter(e => (e.frequency ?? 'monthly') === freqFilter)
   const monthlyTotal = savingsEntries.reduce((s, e) => s + monthlyRate(e), 0)
 
-  const inputCls = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
-  const selectCls = inputCls + ' bg-white'
+  function getLocal(id, field, fallback) {
+    return localVals[id]?.[field] ?? fallback
+  }
+  function setLocal(id, field, val) {
+    setLocalVals(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }))
+  }
+  function commitText(entry, field) {
+    const val = getLocal(entry.id, field, field === 'name' ? entry.name : String(entry.amount))
+    if (field === 'name') {
+      if (!val.trim() || val.trim() === entry.name) return
+      onUpdate(entry.id, { name: val.trim(), amount: entry.amount, category: entry.category, frequency: entry.frequency ?? 'monthly' })
+    } else {
+      const parsed = parseFloat(val)
+      if (!parsed || parsed === entry.amount) return
+      onUpdate(entry.id, { name: entry.name, amount: parsed, category: entry.category, frequency: entry.frequency ?? 'monthly' })
+    }
+  }
+  function commitSelect(entry, field, val) {
+    onUpdate(entry.id, { name: entry.name, amount: entry.amount, category: entry.category, frequency: entry.frequency ?? 'monthly', [field]: val })
+  }
+
+  const addInput  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
+  const addSelect = addInput + ' bg-white'
+  const cellInput  = 'w-full border border-transparent rounded-lg px-2.5 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] hover:border-gray-200 bg-transparent focus:bg-white transition-all'
+  const cellSelect = cellInput + ' bg-white cursor-pointer'
 
   return (
     <div className="max-w-2xl">
@@ -792,21 +786,18 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
       <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
         <h2 className="text-sm font-semibold text-gray-800 mb-5">Add Savings Allocation</h2>
         <div className="flex gap-3 items-end flex-wrap">
-
           <div className="flex-1 min-w-40">
             <label className="block text-xs text-gray-500 mb-1.5">Name</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. RRSP contribution" className={inputCls} />
+              onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. RRSP contribution" className={addInput} />
           </div>
-
           <div className="w-36">
             <label className="block text-xs text-gray-500 mb-1.5">Frequency</label>
-            <select value={frequency} onChange={e => setFrequency(e.target.value)} className={selectCls}>
+            <select value={frequency} onChange={e => setFrequency(e.target.value)} className={addSelect}>
               <option value="monthly">Monthly</option>
               <option value="annual">Annual</option>
             </select>
           </div>
-
           <div className="w-36">
             <label className="block text-xs text-gray-500 mb-1.5">Amount ({frequency === 'annual' ? 'per year' : 'per month'})</label>
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
@@ -816,20 +807,17 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
                 className="flex-1 px-2.5 py-2 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
           </div>
-
           <div className="w-48">
             <label className="block text-xs text-gray-500 mb-1.5">Type</label>
-            <select value={category} onChange={e => setCategory(e.target.value)} className={selectCls}>
+            <select value={category} onChange={e => setCategory(e.target.value)} className={addSelect}>
               <option value="">Select type…</option>
               {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-
           <button onClick={handleAdd} disabled={!name.trim() || !amount || !category}
             className="px-5 py-2 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
-
         </div>
       </div>
 
@@ -854,70 +842,50 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
           </div>
 
           {filtered.map(entry => {
-            const hex = CATEGORY_COLOR[entry.category] || '#14A085'
             const isAnnual = (entry.frequency ?? 'monthly') === 'annual'
-            if (editingId === entry.id) {
-              const isEditAnnual = editState.frequency === 'annual'
-              return (
-                <div key={entry.id} className="px-5 py-3 border-b border-gray-50 bg-gray-50/50">
-                  <div className="flex gap-2 items-end flex-wrap">
-                    <div className="flex-1 min-w-32">
-                      <label className="block text-[10px] text-gray-400 mb-1">Name</label>
-                      <input value={editState.name} onChange={e => setEditState(s => ({ ...s, name: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors" />
-                    </div>
-                    <div className="w-28">
-                      <label className="block text-[10px] text-gray-400 mb-1">Frequency</label>
-                      <select value={editState.frequency} onChange={e => setEditState(s => ({ ...s, frequency: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] bg-white transition-colors">
-                        <option value="monthly">Monthly</option>
-                        <option value="annual">Annual</option>
-                      </select>
-                    </div>
-                    <div className="w-32">
-                      <label className="block text-[10px] text-gray-400 mb-1">Amount ({isEditAnnual ? '/yr' : '/mo'})</label>
-                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377]">
-                        <span className="px-2 py-1.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200">$</span>
-                        <input type="number" min="0" value={editState.amount} onChange={e => setEditState(s => ({ ...s, amount: e.target.value }))}
-                          className="flex-1 px-2 py-1.5 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                      </div>
-                    </div>
-                    <div className="w-44">
-                      <label className="block text-[10px] text-gray-400 mb-1">Type</label>
-                      <select value={editState.category} onChange={e => setEditState(s => ({ ...s, category: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] bg-white transition-colors">
-                        {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => saveEdit(entry.id)}
-                        className="px-3 py-1.5 bg-[#0D7377] text-white text-xs font-medium rounded-lg hover:bg-[#0b6165] transition-colors">
-                        Save
-                      </button>
-                      <button onClick={() => setEditingId(null)}
-                        className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors">
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )
-            }
+            const localAmt = getLocal(entry.id, 'amount', String(entry.amount))
             return (
-              <div key={entry.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-50 last:border-0 group">
-                <span className="flex-1 text-sm text-gray-700 font-medium">{entry.name}</span>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${isAnnual ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
-                  {isAnnual ? 'Annual' : 'Monthly'}
-                </span>
-                <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
-                  {entry.category}
-                </span>
-                <div className="text-right shrink-0 w-28">
-                  <p className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(entry.amount)}</p>
-                  {isAnnual && <p className="text-[10px] text-gray-400 tabular-nums">{fmt(entry.amount / 12)}/mo</p>}
+              <div key={entry.id} className="grid items-center gap-2 px-4 py-2.5 border-b border-gray-50 last:border-0"
+                style={{ gridTemplateColumns: '1fr 110px 100px 160px 28px' }}>
+
+                <input
+                  type="text"
+                  value={getLocal(entry.id, 'name', entry.name)}
+                  onChange={e => setLocal(entry.id, 'name', e.target.value)}
+                  onBlur={() => commitText(entry, 'name')}
+                  onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                  className={cellInput}
+                />
+
+                <select
+                  value={getLocal(entry.id, 'frequency', entry.frequency ?? 'monthly')}
+                  onChange={e => { setLocal(entry.id, 'frequency', e.target.value); commitSelect(entry, 'frequency', e.target.value) }}
+                  className={cellSelect}>
+                  <option value="monthly">Monthly</option>
+                  <option value="annual">Annual</option>
+                </select>
+
+                <div className="flex items-center border border-transparent rounded-lg overflow-hidden hover:border-gray-200 focus-within:border-[#0D7377] transition-all focus-within:bg-white">
+                  <span className="px-1.5 py-1.5 text-gray-400 text-xs select-none shrink-0">$</span>
+                  <input
+                    type="number" min="0"
+                    value={localAmt}
+                    onChange={e => setLocal(entry.id, 'amount', e.target.value)}
+                    onBlur={() => commitText(entry, 'amount')}
+                    onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                    className="flex-1 py-1.5 pr-1.5 text-sm text-gray-800 outline-none w-0 bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  {isAnnual && <span className="pr-1.5 text-[10px] text-gray-400 shrink-0">/yr</span>}
                 </div>
-                <button onClick={() => startEdit(entry)} className="text-gray-300 hover:text-[#0D7377] transition-colors text-sm shrink-0" title="Edit">✎</button>
-                <button onClick={() => onDelete(entry.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 ml-1" title="Remove">✕</button>
+
+                <select
+                  value={getLocal(entry.id, 'category', entry.category)}
+                  onChange={e => { setLocal(entry.id, 'category', e.target.value); commitSelect(entry, 'category', e.target.value) }}
+                  className={cellSelect}>
+                  {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+
+                <button onClick={() => onDelete(entry.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none" title="Remove">✕</button>
               </div>
             )
           })}
