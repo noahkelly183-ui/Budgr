@@ -2831,19 +2831,22 @@ export default function App() {
   }, [user])
 
   async function addFixedCost(cost) {
-    const { data, error } = await supabase
-      .from('fixed_costs')
-      .insert({ user_id: user.id, name: cost.name, amount: cost.amount, category: cost.category, frequency: cost.frequency ?? 'monthly' })
-      .select()
-      .single()
+    const freq = cost.frequency ?? 'monthly'
+    const base = { user_id: user.id, name: cost.name, amount: cost.amount, category: cost.category }
+    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single()
+    if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
     if (!error && data) {
-      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: data.frequency ?? 'monthly' }])
+      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq }])
     }
   }
 
   async function updateFixedCost(id, changes) {
     setFixedCosts(prev => prev.map(c => c.id === id ? { ...c, ...changes } : c))
-    await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
+    const { error } = await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
+    if (error) {
+      const { frequency: _f, ...rest } = changes
+      await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
+    }
   }
 
   async function deleteFixedCost(id) {
@@ -2852,19 +2855,22 @@ export default function App() {
   }
 
   async function addSavingsEntry(entry) {
-    const { data, error } = await supabase
-      .from('fixed_costs')
-      .insert({ user_id: user.id, name: entry.name, amount: entry.amount, category: entry.category, frequency: entry.frequency ?? 'monthly' })
-      .select()
-      .single()
+    const freq = entry.frequency ?? 'monthly'
+    const base = { user_id: user.id, name: entry.name, amount: entry.amount, category: entry.category }
+    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single()
+    if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
     if (!error && data) {
-      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: data.frequency ?? 'monthly' }])
+      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq }])
     }
   }
 
   async function updateSavingsEntry(id, changes) {
     setSavingsEntries(prev => prev.map(e => e.id === id ? { ...e, ...changes } : e))
-    await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
+    const { error } = await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
+    if (error) {
+      const { frequency: _f, ...rest } = changes
+      await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
+    }
   }
 
   async function deleteSavingsEntry(id) {
