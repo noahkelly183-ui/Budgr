@@ -604,10 +604,8 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
   const filtered     = freqFilter === 'all' ? fixedCosts : fixedCosts.filter(c => (c.frequency ?? 'monthly') === freqFilter)
   const monthlyTotal = fixedCosts.reduce((s, c) => s + monthlyRate(c), 0)
 
-  const cellInput  = 'w-full border border-transparent rounded-lg px-2.5 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] hover:border-gray-200 bg-transparent focus:bg-white transition-all'
-  const cellSelect = cellInput + ' bg-white cursor-pointer'
-  const addInput   = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
-  const addSelect  = addInput + ' bg-white'
+  const addInput  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
+  const addSelect = addInput + ' bg-white'
 
   return (
     <div className="max-w-2xl">
@@ -675,9 +673,10 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
           {filtered.map(cost => {
             const isAnnual = (cost.frequency ?? 'monthly') === 'annual'
             const localAmt = getLocal(cost.id, 'amount', String(cost.amount))
+            const localCat = getLocal(cost.id, 'category', cost.category)
+            const hex = CATEGORY_COLOR[localCat] || '#9CA3AF'
             return (
-              <div key={cost.id} className="grid items-center gap-2 px-4 py-2.5 border-b border-gray-50 last:border-0"
-                style={{ gridTemplateColumns: '1fr 110px 100px 160px 28px' }}>
+              <div key={cost.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0">
 
                 <input
                   type="text"
@@ -685,40 +684,45 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
                   onChange={e => setLocal(cost.id, 'name', e.target.value)}
                   onBlur={() => commitText(cost, 'name')}
                   onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                  className={cellInput}
+                  className="flex-1 text-sm text-gray-700 bg-transparent border border-transparent rounded-lg px-2 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all min-w-0"
                 />
 
                 <select
                   value={getLocal(cost.id, 'frequency', cost.frequency ?? 'monthly')}
                   onChange={e => { setLocal(cost.id, 'frequency', e.target.value); commitSelect(cost, 'frequency', e.target.value) }}
-                  className={cellSelect}>
+                  className="text-[10px] font-semibold rounded-full px-2.5 py-0.5 border border-transparent outline-none cursor-pointer transition-all hover:border-gray-200"
+                  style={{ backgroundColor: isAnnual ? '#FEF3C7' : '#F3F4F6', color: isAnnual ? '#D97706' : '#6B7280' }}>
                   <option value="monthly">Monthly</option>
                   <option value="annual">Annual</option>
                 </select>
 
-                <div className="flex items-center border border-transparent rounded-lg overflow-hidden hover:border-gray-200 focus-within:border-[#0D7377] transition-all focus-within:bg-white">
-                  <span className="px-1.5 py-1.5 text-gray-400 text-xs select-none shrink-0">$</span>
+                <div className="flex items-center gap-1 shrink-0 w-28 justify-end">
+                  <span className="text-xs text-gray-400">$</span>
                   <input
                     type="number" min="0"
                     value={localAmt}
                     onChange={e => setLocal(cost.id, 'amount', e.target.value)}
                     onBlur={() => commitText(cost, 'amount')}
                     onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                    className="flex-1 py-1.5 pr-1.5 text-sm text-gray-800 outline-none w-0 bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="w-20 text-sm font-semibold text-gray-800 tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
-                  {isAnnual && <span className="pr-1.5 text-[10px] text-gray-400 shrink-0">/yr</span>}
+                  {isAnnual && <span className="text-[10px] text-gray-400">/yr</span>}
                 </div>
 
-                <select
-                  value={getLocal(cost.id, 'category', cost.category)}
-                  onChange={e => { setLocal(cost.id, 'category', e.target.value); commitSelect(cost, 'category', e.target.value) }}
-                  className={cellSelect}>
-                  {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                <div className="relative shrink-0" style={{ backgroundColor: hex + '1a', borderRadius: '9999px' }}>
+                  <select
+                    value={localCat}
+                    onChange={e => { setLocal(cost.id, 'category', e.target.value); commitSelect(cost, 'category', e.target.value) }}
+                    className="text-xs font-medium pl-2.5 pr-5 py-0.5 rounded-full border-none outline-none cursor-pointer bg-transparent appearance-none"
+                    style={{ color: hex }}>
+                    {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <svg className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5" style={{ color: hex }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </div>
 
-                <button onClick={() => onDelete(cost.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none" title="Remove">✕</button>
+                <button onClick={() => onDelete(cost.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0" title="Remove">✕</button>
               </div>
             )
           })}
@@ -777,8 +781,6 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
 
   const addInput  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
   const addSelect = addInput + ' bg-white'
-  const cellInput  = 'w-full border border-transparent rounded-lg px-2.5 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] hover:border-gray-200 bg-transparent focus:bg-white transition-all'
-  const cellSelect = cellInput + ' bg-white cursor-pointer'
 
   return (
     <div className="max-w-2xl">
@@ -844,9 +846,10 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
           {filtered.map(entry => {
             const isAnnual = (entry.frequency ?? 'monthly') === 'annual'
             const localAmt = getLocal(entry.id, 'amount', String(entry.amount))
+            const localCat = getLocal(entry.id, 'category', entry.category)
+            const hex = CATEGORY_COLOR[localCat] || '#14A085'
             return (
-              <div key={entry.id} className="grid items-center gap-2 px-4 py-2.5 border-b border-gray-50 last:border-0"
-                style={{ gridTemplateColumns: '1fr 110px 100px 160px 28px' }}>
+              <div key={entry.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0">
 
                 <input
                   type="text"
@@ -854,38 +857,43 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
                   onChange={e => setLocal(entry.id, 'name', e.target.value)}
                   onBlur={() => commitText(entry, 'name')}
                   onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                  className={cellInput}
+                  className="flex-1 text-sm text-gray-700 bg-transparent border border-transparent rounded-lg px-2 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all min-w-0"
                 />
 
                 <select
                   value={getLocal(entry.id, 'frequency', entry.frequency ?? 'monthly')}
                   onChange={e => { setLocal(entry.id, 'frequency', e.target.value); commitSelect(entry, 'frequency', e.target.value) }}
-                  className={cellSelect}>
+                  className="text-[10px] font-semibold rounded-full px-2.5 py-0.5 border border-transparent outline-none cursor-pointer transition-all hover:border-gray-200"
+                  style={{ backgroundColor: isAnnual ? '#FEF3C7' : '#F3F4F6', color: isAnnual ? '#D97706' : '#6B7280' }}>
                   <option value="monthly">Monthly</option>
                   <option value="annual">Annual</option>
                 </select>
 
-                <div className="flex items-center border border-transparent rounded-lg overflow-hidden hover:border-gray-200 focus-within:border-[#0D7377] transition-all focus-within:bg-white">
-                  <span className="px-1.5 py-1.5 text-gray-400 text-xs select-none shrink-0">$</span>
+                <div className="flex items-center gap-1 shrink-0 w-28 justify-end">
+                  <span className="text-xs text-gray-400">$</span>
                   <input
                     type="number" min="0"
                     value={localAmt}
                     onChange={e => setLocal(entry.id, 'amount', e.target.value)}
                     onBlur={() => commitText(entry, 'amount')}
                     onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                    className="flex-1 py-1.5 pr-1.5 text-sm text-gray-800 outline-none w-0 bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="w-20 text-sm font-semibold text-[#0D7377] tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
-                  {isAnnual && <span className="pr-1.5 text-[10px] text-gray-400 shrink-0">/yr</span>}
+                  {isAnnual && <span className="text-[10px] text-gray-400">/yr</span>}
                 </div>
 
-                <select
-                  value={getLocal(entry.id, 'category', entry.category)}
-                  onChange={e => { setLocal(entry.id, 'category', e.target.value); commitSelect(entry, 'category', e.target.value) }}
-                  className={cellSelect}>
-                  {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <div className="relative shrink-0" style={{ backgroundColor: hex + '1a', borderRadius: '9999px' }}>
+                  <select
+                    value={localCat}
+                    onChange={e => { setLocal(entry.id, 'category', e.target.value); commitSelect(entry, 'category', e.target.value) }}
+                    className="text-xs font-medium pl-2.5 pr-5 py-0.5 rounded-full border-none outline-none cursor-pointer bg-transparent appearance-none"
+                    style={{ color: hex }}>
+                    {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <svg className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5" style={{ color: hex }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </div>
 
-                <button onClick={() => onDelete(entry.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none" title="Remove">✕</button>
+                <button onClick={() => onDelete(entry.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0" title="Remove">✕</button>
               </div>
             )
           })}
