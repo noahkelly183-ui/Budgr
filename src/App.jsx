@@ -19,7 +19,8 @@ const EXCLUDE_FROM_TOTALS = new Set(['Transfer / Payment', 'Credit Card Payment'
 
 // Saving categories — lowercase for case-insensitive matching
 const SAVING_CATEGORIES = ['investments', 'savings', 'savings transfer', 'rrsp', 'tfsa', 'emergency fund']
-const isSaving = cat => !!cat && SAVING_CATEGORIES.includes(cat.toLowerCase())
+const isSaving     = cat => !!cat && SAVING_CATEGORIES.includes(cat.toLowerCase())
+const monthlyRate  = entry => entry.frequency === 'annual' ? entry.amount / 12 : entry.amount
 const savingCatLabel = cat => {
   const upper = cat.toUpperCase()
   if (upper === 'RRSP' || upper === 'TFSA') return upper
@@ -436,7 +437,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
   const monthsWithData = new Set(allDebitsAnn.map(t => yearMonthOf(t.date))).size
 
   const fixedCostItems    = fixedCosts.filter(c => !isSaving(c.category))
-  const fixedMonthlyTotal = fixedCostItems.reduce((s, c) => s + c.amount, 0)
+  const fixedMonthlyTotal = fixedCostItems.reduce((s, c) => s + monthlyRate(c), 0)
   const fixedYTD          = fixedMonthlyTotal * monthsWithData
 
   const variableDebitsAnn = allDebitsAnn.filter(t => !isSaving(t.category))
@@ -462,7 +463,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
 
   const savingsByCategory = {}
   for (const e of savingsEntries) {
-    savingsByCategory[e.category] = (savingsByCategory[e.category] || 0) + e.amount
+    savingsByCategory[e.category] = (savingsByCategory[e.category] || 0) + monthlyRate(e)
   }
   const savingsCatEntries = Object.entries(savingsByCategory)
     .map(([cat, monthly]) => [cat, monthly * monthsWithData])
@@ -474,7 +475,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
     {
       name: 'Fixed Costs',
       hex: '#6B7280',
-      items: fixedCostItems.map(c => [c.name, monthsWithData > 0 ? c.amount * monthsWithData : 0]),
+      items: fixedCostItems.map(c => [c.name, monthsWithData > 0 ? monthlyRate(c) * monthsWithData : 0]),
       total: fixedYTD,
       emptyMsg: 'No fixed costs entered',
     },
@@ -564,21 +565,39 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
 
 // ─── FixedCostsPage ───────────────────────────────────────────────────────────
 
-function FixedCostsPage({ fixedCosts, onAdd, onDelete }) {
-  const [name, setName]         = useState('')
-  const [amount, setAmount]     = useState('')
-  const [category, setCategory] = useState('')
+function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
+  const [name, setName]           = useState('')
+  const [amount, setAmount]       = useState('')
+  const [category, setCategory]   = useState('')
+  const [frequency, setFrequency] = useState('monthly')
+  const [freqFilter, setFreqFilter] = useState('all')
+  const [editingId, setEditingId] = useState(null)
+  const [editState, setEditState] = useState({})
 
   function handleAdd() {
     const parsed = parseFloat(amount)
     if (!name.trim() || !parsed || !category) return
-    onAdd({ name: name.trim(), amount: parsed, category })
-    setName('')
-    setAmount('')
-    setCategory('')
+    onAdd({ name: name.trim(), amount: parsed, category, frequency })
+    setName(''); setAmount(''); setCategory(''); setFrequency('monthly')
   }
 
-  const monthlyTotal = fixedCosts.reduce((s, c) => s + c.amount, 0)
+  function startEdit(cost) {
+    setEditingId(cost.id)
+    setEditState({ name: cost.name, amount: String(cost.amount), category: cost.category, frequency: cost.frequency ?? 'monthly' })
+  }
+
+  function saveEdit(id) {
+    const parsed = parseFloat(editState.amount)
+    if (!editState.name.trim() || !parsed || !editState.category) return
+    onUpdate(id, { name: editState.name.trim(), amount: parsed, category: editState.category, frequency: editState.frequency })
+    setEditingId(null)
+  }
+
+  const filtered = freqFilter === 'all' ? fixedCosts : fixedCosts.filter(c => (c.frequency ?? 'monthly') === freqFilter)
+  const monthlyTotal = fixedCosts.reduce((s, c) => s + monthlyRate(c), 0)
+
+  const inputCls = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
+  const selectCls = inputCls + ' bg-white'
 
   return (
     <div className="max-w-2xl">
@@ -589,39 +608,31 @@ function FixedCostsPage({ fixedCosts, onAdd, onDelete }) {
 
           <div className="flex-1 min-w-40">
             <label className="block text-xs text-gray-500 mb-1.5">Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAdd()}
-              placeholder="e.g. Rent"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors"
-            />
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. Rent" className={inputCls} />
           </div>
 
-          <div className="w-40">
-            <label className="block text-xs text-gray-500 mb-1.5">Amount / month</label>
+          <div className="w-36">
+            <label className="block text-xs text-gray-500 mb-1.5">Frequency</label>
+            <select value={frequency} onChange={e => setFrequency(e.target.value)} className={selectCls}>
+              <option value="monthly">Monthly</option>
+              <option value="annual">Annual</option>
+            </select>
+          </div>
+
+          <div className="w-36">
+            <label className="block text-xs text-gray-500 mb-1.5">Amount ({frequency === 'annual' ? 'per year' : 'per month'})</label>
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
-              <span className="px-2.5 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
-              <input
-                type="number"
-                min="0"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                placeholder="0"
-                className="flex-1 px-2.5 py-2.5 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
+              <span className="px-2.5 py-2 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
+              <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="0"
+                className="flex-1 px-2.5 py-2 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
           </div>
 
-          <div className="w-52">
+          <div className="w-48">
             <label className="block text-xs text-gray-500 mb-1.5">Category</label>
-            <select
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors bg-white"
-            >
+            <select value={category} onChange={e => setCategory(e.target.value)} className={selectCls}>
               <option value="">Select category…</option>
               {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
                 <option key={c} value={c}>{c}</option>
@@ -629,11 +640,8 @@ function FixedCostsPage({ fixedCosts, onAdd, onDelete }) {
             </select>
           </div>
 
-          <button
-            onClick={handleAdd}
-            disabled={!name.trim() || !amount || !category}
-            className="px-5 py-2.5 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
+          <button onClick={handleAdd} disabled={!name.trim() || !amount || !category}
+            className="px-5 py-2 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
 
@@ -647,34 +655,90 @@ function FixedCostsPage({ fixedCosts, onAdd, onDelete }) {
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Monthly Fixed Costs</p>
-            <p className="text-xs text-gray-400">{fixedCosts.length} item{fixedCosts.length !== 1 ? 's' : ''}</p>
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center gap-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide shrink-0">Fixed Costs</p>
+            <div className="flex items-center gap-1">
+              {['all', 'monthly', 'annual'].map(f => (
+                <button key={f} onClick={() => setFreqFilter(f)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors capitalize ${freqFilter === f ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 shrink-0">{filtered.length} item{filtered.length !== 1 ? 's' : ''}</p>
           </div>
-          {fixedCosts.map(cost => {
+
+          {filtered.map(cost => {
             const hex = CATEGORY_COLOR[cost.category] || '#9CA3AF'
+            const isAnnual = (cost.frequency ?? 'monthly') === 'annual'
+            if (editingId === cost.id) {
+              const isEditAnnual = editState.frequency === 'annual'
+              return (
+                <div key={cost.id} className="px-5 py-3 border-b border-gray-50 bg-gray-50/50">
+                  <div className="flex gap-2 items-end flex-wrap">
+                    <div className="flex-1 min-w-32">
+                      <label className="block text-[10px] text-gray-400 mb-1">Name</label>
+                      <input value={editState.name} onChange={e => setEditState(s => ({ ...s, name: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors" />
+                    </div>
+                    <div className="w-28">
+                      <label className="block text-[10px] text-gray-400 mb-1">Frequency</label>
+                      <select value={editState.frequency} onChange={e => setEditState(s => ({ ...s, frequency: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] bg-white transition-colors">
+                        <option value="monthly">Monthly</option>
+                        <option value="annual">Annual</option>
+                      </select>
+                    </div>
+                    <div className="w-32">
+                      <label className="block text-[10px] text-gray-400 mb-1">Amount ({isEditAnnual ? '/yr' : '/mo'})</label>
+                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377]">
+                        <span className="px-2 py-1.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200">$</span>
+                        <input type="number" min="0" value={editState.amount} onChange={e => setEditState(s => ({ ...s, amount: e.target.value }))}
+                          className="flex-1 px-2 py-1.5 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      </div>
+                    </div>
+                    <div className="w-44">
+                      <label className="block text-[10px] text-gray-400 mb-1">Category</label>
+                      <select value={editState.category} onChange={e => setEditState(s => ({ ...s, category: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] bg-white transition-colors">
+                        {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => saveEdit(cost.id)}
+                        className="px-3 py-1.5 bg-[#0D7377] text-white text-xs font-medium rounded-lg hover:bg-[#0b6165] transition-colors">
+                        Save
+                      </button>
+                      <button onClick={() => setEditingId(null)}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
             return (
-              <div key={cost.id} className="flex items-center gap-4 px-5 py-3 border-b border-gray-50 last:border-0">
+              <div key={cost.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-50 last:border-0 group">
                 <span className="flex-1 text-sm text-gray-700 font-medium">{cost.name}</span>
-                <span
-                  className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0"
-                  style={{ backgroundColor: hex + '1a', color: hex }}
-                >
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${isAnnual ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
+                  {isAnnual ? 'Annual' : 'Monthly'}
+                </span>
+                <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
                   {cost.category}
                 </span>
-                <span className="text-sm font-semibold text-gray-800 tabular-nums w-24 text-right shrink-0">
-                  {fmt(cost.amount)}
-                </span>
-                <button
-                  onClick={() => onDelete(cost.id)}
-                  className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 ml-1"
-                  title="Remove"
-                >
-                  ✕
-                </button>
+                <div className="text-right shrink-0 w-28">
+                  <p className="text-sm font-semibold text-gray-800 tabular-nums">{fmt(isAnnual ? cost.amount : cost.amount)}</p>
+                  {isAnnual && <p className="text-[10px] text-gray-400 tabular-nums">{fmt(cost.amount / 12)}/mo</p>}
+                </div>
+                <button onClick={() => startEdit(cost)} className="text-gray-300 hover:text-[#0D7377] transition-colors text-sm shrink-0 opacity-0 group-hover:opacity-100" title="Edit">✎</button>
+                <button onClick={() => onDelete(cost.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 ml-1" title="Remove">✕</button>
               </div>
             )
           })}
+
           <div className="px-5 py-3 bg-gray-50/60 flex justify-between items-center">
             <span className="text-xs font-medium text-gray-500">Monthly total</span>
             <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(monthlyTotal)}</span>
@@ -688,21 +752,39 @@ function FixedCostsPage({ fixedCosts, onAdd, onDelete }) {
 
 // ─── SavingsPage ─────────────────────────────────────────────────────────────
 
-function SavingsPage({ savingsEntries, onAdd, onDelete }) {
-  const [name, setName]         = useState('')
-  const [amount, setAmount]     = useState('')
-  const [category, setCategory] = useState('')
+function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
+  const [name, setName]           = useState('')
+  const [amount, setAmount]       = useState('')
+  const [category, setCategory]   = useState('')
+  const [frequency, setFrequency] = useState('monthly')
+  const [freqFilter, setFreqFilter] = useState('all')
+  const [editingId, setEditingId] = useState(null)
+  const [editState, setEditState] = useState({})
 
   function handleAdd() {
     const parsed = parseFloat(amount)
     if (!name.trim() || !parsed || !category) return
-    onAdd({ name: name.trim(), amount: parsed, category })
-    setName('')
-    setAmount('')
-    setCategory('')
+    onAdd({ name: name.trim(), amount: parsed, category, frequency })
+    setName(''); setAmount(''); setCategory(''); setFrequency('monthly')
   }
 
-  const monthlyTotal = savingsEntries.reduce((s, c) => s + c.amount, 0)
+  function startEdit(entry) {
+    setEditingId(entry.id)
+    setEditState({ name: entry.name, amount: String(entry.amount), category: entry.category, frequency: entry.frequency ?? 'monthly' })
+  }
+
+  function saveEdit(id) {
+    const parsed = parseFloat(editState.amount)
+    if (!editState.name.trim() || !parsed || !editState.category) return
+    onUpdate(id, { name: editState.name.trim(), amount: parsed, category: editState.category, frequency: editState.frequency })
+    setEditingId(null)
+  }
+
+  const filtered = freqFilter === 'all' ? savingsEntries : savingsEntries.filter(e => (e.frequency ?? 'monthly') === freqFilter)
+  const monthlyTotal = savingsEntries.reduce((s, e) => s + monthlyRate(e), 0)
+
+  const inputCls = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
+  const selectCls = inputCls + ' bg-white'
 
   return (
     <div className="max-w-2xl">
@@ -713,51 +795,38 @@ function SavingsPage({ savingsEntries, onAdd, onDelete }) {
 
           <div className="flex-1 min-w-40">
             <label className="block text-xs text-gray-500 mb-1.5">Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAdd()}
-              placeholder="e.g. RRSP contribution"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors"
-            />
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. RRSP contribution" className={inputCls} />
           </div>
 
-          <div className="w-40">
-            <label className="block text-xs text-gray-500 mb-1.5">Amount / month</label>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
-              <span className="px-2.5 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
-              <input
-                type="number"
-                min="0"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                placeholder="0"
-                className="flex-1 px-2.5 py-2.5 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-            </div>
-          </div>
-
-          <div className="w-52">
-            <label className="block text-xs text-gray-500 mb-1.5">Type</label>
-            <select
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors bg-white"
-            >
-              <option value="">Select type…</option>
-              {SAVINGS_CATS.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+          <div className="w-36">
+            <label className="block text-xs text-gray-500 mb-1.5">Frequency</label>
+            <select value={frequency} onChange={e => setFrequency(e.target.value)} className={selectCls}>
+              <option value="monthly">Monthly</option>
+              <option value="annual">Annual</option>
             </select>
           </div>
 
-          <button
-            onClick={handleAdd}
-            disabled={!name.trim() || !amount || !category}
-            className="px-5 py-2.5 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
+          <div className="w-36">
+            <label className="block text-xs text-gray-500 mb-1.5">Amount ({frequency === 'annual' ? 'per year' : 'per month'})</label>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
+              <span className="px-2.5 py-2 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
+              <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="0"
+                className="flex-1 px-2.5 py-2 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+            </div>
+          </div>
+
+          <div className="w-48">
+            <label className="block text-xs text-gray-500 mb-1.5">Type</label>
+            <select value={category} onChange={e => setCategory(e.target.value)} className={selectCls}>
+              <option value="">Select type…</option>
+              {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <button onClick={handleAdd} disabled={!name.trim() || !amount || !category}
+            className="px-5 py-2 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
 
@@ -771,34 +840,88 @@ function SavingsPage({ savingsEntries, onAdd, onDelete }) {
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center">
-            <p className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide">Monthly Savings Allocations</p>
-            <p className="text-xs text-gray-400">{savingsEntries.length} item{savingsEntries.length !== 1 ? 's' : ''}</p>
+          <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center gap-3">
+            <p className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide shrink-0">Savings Allocations</p>
+            <div className="flex items-center gap-1">
+              {['all', 'monthly', 'annual'].map(f => (
+                <button key={f} onClick={() => setFreqFilter(f)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${freqFilter === f ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 shrink-0">{filtered.length} item{filtered.length !== 1 ? 's' : ''}</p>
           </div>
-          {savingsEntries.map(entry => {
+
+          {filtered.map(entry => {
             const hex = CATEGORY_COLOR[entry.category] || '#14A085'
+            const isAnnual = (entry.frequency ?? 'monthly') === 'annual'
+            if (editingId === entry.id) {
+              const isEditAnnual = editState.frequency === 'annual'
+              return (
+                <div key={entry.id} className="px-5 py-3 border-b border-gray-50 bg-gray-50/50">
+                  <div className="flex gap-2 items-end flex-wrap">
+                    <div className="flex-1 min-w-32">
+                      <label className="block text-[10px] text-gray-400 mb-1">Name</label>
+                      <input value={editState.name} onChange={e => setEditState(s => ({ ...s, name: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors" />
+                    </div>
+                    <div className="w-28">
+                      <label className="block text-[10px] text-gray-400 mb-1">Frequency</label>
+                      <select value={editState.frequency} onChange={e => setEditState(s => ({ ...s, frequency: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] bg-white transition-colors">
+                        <option value="monthly">Monthly</option>
+                        <option value="annual">Annual</option>
+                      </select>
+                    </div>
+                    <div className="w-32">
+                      <label className="block text-[10px] text-gray-400 mb-1">Amount ({isEditAnnual ? '/yr' : '/mo'})</label>
+                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377]">
+                        <span className="px-2 py-1.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200">$</span>
+                        <input type="number" min="0" value={editState.amount} onChange={e => setEditState(s => ({ ...s, amount: e.target.value }))}
+                          className="flex-1 px-2 py-1.5 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      </div>
+                    </div>
+                    <div className="w-44">
+                      <label className="block text-[10px] text-gray-400 mb-1">Type</label>
+                      <select value={editState.category} onChange={e => setEditState(s => ({ ...s, category: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] bg-white transition-colors">
+                        {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => saveEdit(entry.id)}
+                        className="px-3 py-1.5 bg-[#0D7377] text-white text-xs font-medium rounded-lg hover:bg-[#0b6165] transition-colors">
+                        Save
+                      </button>
+                      <button onClick={() => setEditingId(null)}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
             return (
-              <div key={entry.id} className="flex items-center gap-4 px-5 py-3 border-b border-gray-50 last:border-0">
+              <div key={entry.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-50 last:border-0 group">
                 <span className="flex-1 text-sm text-gray-700 font-medium">{entry.name}</span>
-                <span
-                  className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0"
-                  style={{ backgroundColor: hex + '1a', color: hex }}
-                >
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${isAnnual ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
+                  {isAnnual ? 'Annual' : 'Monthly'}
+                </span>
+                <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
                   {entry.category}
                 </span>
-                <span className="text-sm font-semibold text-[#0D7377] tabular-nums w-24 text-right shrink-0">
-                  {fmt(entry.amount)}
-                </span>
-                <button
-                  onClick={() => onDelete(entry.id)}
-                  className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 ml-1"
-                  title="Remove"
-                >
-                  ✕
-                </button>
+                <div className="text-right shrink-0 w-28">
+                  <p className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(entry.amount)}</p>
+                  {isAnnual && <p className="text-[10px] text-gray-400 tabular-nums">{fmt(entry.amount / 12)}/mo</p>}
+                </div>
+                <button onClick={() => startEdit(entry)} className="text-gray-300 hover:text-[#0D7377] transition-colors text-sm shrink-0 opacity-0 group-hover:opacity-100" title="Edit">✎</button>
+                <button onClick={() => onDelete(entry.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 ml-1" title="Remove">✕</button>
               </div>
             )
           })}
+
           <div className="px-5 py-3 bg-[#F0FDF9]/60 flex justify-between items-center">
             <span className="text-xs font-medium text-[#0D7377]">Monthly total</span>
             <span className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(monthlyTotal)}</span>
@@ -821,7 +944,7 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
   const untagged    = monthTxns.filter(t => !t.category).length
 
   const txnSpent          = debits.reduce((sum, t) => sum + t.amount, 0)
-  const fixedMonthlyTotal = fixedCosts.reduce((s, c) => s + c.amount, 0)
+  const fixedMonthlyTotal = fixedCosts.reduce((s, c) => s + monthlyRate(c), 0)
   const totalSpent        = txnSpent + fixedMonthlyTotal
 
   const annualNet  = salary.gross > 0
@@ -830,13 +953,13 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
   const monthlyNet = annualNet / 12
 
   // Savings = amounts entered on the Savings page
-  const savingsEntriesTotal = savingsEntries.reduce((s, e) => s + e.amount, 0)
+  const savingsEntriesTotal = savingsEntries.reduce((s, e) => s + monthlyRate(e), 0)
   const totalSavings        = savingsEntriesTotal
   const savingsRate         = monthlyNet > 0 ? (totalSavings / monthlyNet) * 100 : null
 
   // Savings breakdown by category from entries
   const savingsByCat = savingsEntries.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount
+    acc[e.category] = (acc[e.category] || 0) + monthlyRate(e)
     return acc
   }, {})
 
@@ -1093,7 +1216,7 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
               )
               const fixedTotal = fixedCosts
                 .filter(c => group.cats.includes(c.category))
-                .reduce((s, c) => s + c.amount, 0)
+                .reduce((s, c) => s + monthlyRate(c), 0)
               const groupTotal = txnTotal + fixedTotal
               if (groupTotal === 0) return null
               const pct = totalSpent > 0 ? (groupTotal / totalSpent) * 100 : 0
@@ -1188,7 +1311,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
       .map(t => yearMonthOf(t.date))
   ).size
 
-  const fixedMonthlyTotal = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + c.amount, 0)
+  const fixedMonthlyTotal = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + monthlyRate(c), 0)
 
   const avgMonthlySpend       = monthsWithSpendData > 0 ? spentToDate / monthsWithSpendData : null
   const monthlySavings        = monthlyNet > 0 && avgMonthlySpend !== null
@@ -1354,7 +1477,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
   const annualNet        = gross > 0 ? gross - taxAmount - deductionsAnnual : 0
   const monthlyNet       = annualNet / 12
 
-  const fixedMonthlyTotal    = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + c.amount, 0)
+  const fixedMonthlyTotal    = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + monthlyRate(c), 0)
   const fixedAnnualProjected = fixedMonthlyTotal * 12
 
   const allDebitsAnn = transactions.filter(t =>
@@ -1384,7 +1507,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
   const incomeToDate = monthlyNet * monthsElapsed
 
   // Savings = savings entries (monthly amounts from Savings page) × elapsed months
-  const monthlySavingsTotal = savingsEntries.reduce((s, e) => s + e.amount, 0)
+  const monthlySavingsTotal = savingsEntries.reduce((s, e) => s + monthlyRate(e), 0)
   const allSavingsYTD       = monthlySavingsTotal * monthsElapsed
   const totalSavingsYTD     = allSavingsYTD > 0 ? allSavingsYTD : null
   const savingsRateYTD      = incomeToDate > 0 && allSavingsYTD > 0 ? (allSavingsYTD / incomeToDate) * 100 : null
@@ -1415,7 +1538,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
 
   // Savings breakdown by category (entries × elapsed months for YTD amounts)
   const savingsCatMap = savingsEntries.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount * monthsElapsed
+    acc[e.category] = (acc[e.category] || 0) + monthlyRate(e) * monthsElapsed
     return acc
   }, {})
   const savingsCatEntries = Object.entries(savingsCatMap).sort((a, b) => b[1] - a[1])
@@ -1586,7 +1709,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
           ? fixedCostItems.map(c => (
               <div key={c.id} className="flex justify-between items-center py-2 border-b border-gray-50">
                 <span className="text-sm text-gray-600">{c.name}</span>
-                <span className="text-sm font-medium text-gray-800 tabular-nums">{monthsWithData > 0 ? fmt(c.amount * monthsWithData) : '—'}</span>
+                <span className="text-sm font-medium text-gray-800 tabular-nums">{monthsWithData > 0 ? fmt(monthlyRate(c) * monthsWithData) : '—'}</span>
               </div>
             ))
           : <div className="py-2"><span className="text-sm italic text-gray-400">No fixed costs entered</span></div>
@@ -1742,8 +1865,8 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
 // ─── YearComparison ──────────────────────────────────────────────────────────
 
 function YearComparison({ transactions, fixedCosts, savingsEntries }) {
-  const fixedMonthlyTotal   = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + c.amount, 0)
-  const monthlySavingsTotal = savingsEntries.reduce((s, e) => s + e.amount, 0)
+  const fixedMonthlyTotal   = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + monthlyRate(c), 0)
+  const monthlySavingsTotal = savingsEntries.reduce((s, e) => s + monthlyRate(e), 0)
 
   const years = [...new Set(
     transactions.map(t => t.date?.slice(0, 4)).filter(y => y?.length === 4)
@@ -2682,7 +2805,7 @@ export default function App() {
         }
 
         if (fixedRes.data) {
-          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category }))
+          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category, frequency: r.frequency ?? 'monthly' }))
           setFixedCosts(rows.filter(r => !isSaving(r.category)))
           setSavingsEntries(rows.filter(r => isSaving(r.category)))
         }
@@ -2710,12 +2833,17 @@ export default function App() {
   async function addFixedCost(cost) {
     const { data, error } = await supabase
       .from('fixed_costs')
-      .insert({ user_id: user.id, name: cost.name, amount: cost.amount, category: cost.category })
+      .insert({ user_id: user.id, name: cost.name, amount: cost.amount, category: cost.category, frequency: cost.frequency ?? 'monthly' })
       .select()
       .single()
     if (!error && data) {
-      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category }])
+      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: data.frequency ?? 'monthly' }])
     }
+  }
+
+  async function updateFixedCost(id, changes) {
+    setFixedCosts(prev => prev.map(c => c.id === id ? { ...c, ...changes } : c))
+    await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
   }
 
   async function deleteFixedCost(id) {
@@ -2726,12 +2854,17 @@ export default function App() {
   async function addSavingsEntry(entry) {
     const { data, error } = await supabase
       .from('fixed_costs')
-      .insert({ user_id: user.id, name: entry.name, amount: entry.amount, category: entry.category })
+      .insert({ user_id: user.id, name: entry.name, amount: entry.amount, category: entry.category, frequency: entry.frequency ?? 'monthly' })
       .select()
       .single()
     if (!error && data) {
-      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category }])
+      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: data.frequency ?? 'monthly' }])
     }
+  }
+
+  async function updateSavingsEntry(id, changes) {
+    setSavingsEntries(prev => prev.map(e => e.id === id ? { ...e, ...changes } : e))
+    await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
   }
 
   async function deleteSavingsEntry(id) {
@@ -3007,7 +3140,7 @@ export default function App() {
 
   return (
     <div
-      className="flex h-screen bg-gray-100 font-sans"
+      className="flex h-screen bg-gray-200 font-sans"
       onDrop={handleDrop}
       onDragOver={e => { e.preventDefault(); setDragging(true) }}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false) }}
@@ -3115,7 +3248,7 @@ export default function App() {
         )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto p-6 bg-gray-100">
+        <main className="flex-1 overflow-auto p-6 bg-gray-200">
 
           {activePage === 'get-started' && (
             <GetStartedPage
@@ -3291,6 +3424,7 @@ export default function App() {
             <FixedCostsPage
               fixedCosts={fixedCosts}
               onAdd={addFixedCost}
+              onUpdate={updateFixedCost}
               onDelete={deleteFixedCost}
             />
           )}
@@ -3299,6 +3433,7 @@ export default function App() {
             <SavingsPage
               savingsEntries={savingsEntries}
               onAdd={addSavingsEntry}
+              onUpdate={updateSavingsEntry}
               onDelete={deleteSavingsEntry}
             />
           )}
