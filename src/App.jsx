@@ -733,7 +733,7 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
                   <p className="text-sm font-semibold text-gray-800 tabular-nums">{fmt(isAnnual ? cost.amount : cost.amount)}</p>
                   {isAnnual && <p className="text-[10px] text-gray-400 tabular-nums">{fmt(cost.amount / 12)}/mo</p>}
                 </div>
-                <button onClick={() => startEdit(cost)} className="text-gray-300 hover:text-[#0D7377] transition-colors text-sm shrink-0 opacity-0 group-hover:opacity-100" title="Edit">✎</button>
+                <button onClick={() => startEdit(cost)} className="text-gray-300 hover:text-[#0D7377] transition-colors text-sm shrink-0" title="Edit">✎</button>
                 <button onClick={() => onDelete(cost.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 ml-1" title="Remove">✕</button>
               </div>
             )
@@ -916,7 +916,7 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
                   <p className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(entry.amount)}</p>
                   {isAnnual && <p className="text-[10px] text-gray-400 tabular-nums">{fmt(entry.amount / 12)}/mo</p>}
                 </div>
-                <button onClick={() => startEdit(entry)} className="text-gray-300 hover:text-[#0D7377] transition-colors text-sm shrink-0 opacity-0 group-hover:opacity-100" title="Edit">✎</button>
+                <button onClick={() => startEdit(entry)} className="text-gray-300 hover:text-[#0D7377] transition-colors text-sm shrink-0" title="Edit">✎</button>
                 <button onClick={() => onDelete(entry.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 ml-1" title="Remove">✕</button>
               </div>
             )
