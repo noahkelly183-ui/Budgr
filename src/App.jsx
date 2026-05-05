@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie, ResponsiveContainer } from 'recharts'
 
 const CATEGORIES = [
   'Bars & Nightlife', 'Car Payment / Insurance', 'Clothing', 'Coffee & Drinks',
@@ -2181,8 +2181,16 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
 // ─── YearComparison ──────────────────────────────────────────────────────────
 
 function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
-  const fixedMonthlyTotal   = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + monthlyRate(c), 0)
-  const monthlySavingsTotal = savingsEntries.reduce((s, e) => s + monthlyRate(e), 0)
+  function fixedMonthlyForYear(year) {
+    return fixedCosts
+      .filter(c => !isSaving(c.category) && (!c.year || c.year === year))
+      .reduce((s, c) => s + monthlyRate(c), 0)
+  }
+  function savingsMonthlyForYear(year) {
+    return savingsEntries
+      .filter(e => !e.year || e.year === year)
+      .reduce((s, e) => s + monthlyRate(e), 0)
+  }
 
   const years = [...new Set(
     transactions.map(t => t.date?.slice(0, 4)).filter(y => y?.length === 4)
@@ -2212,6 +2220,8 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
 
   // Per-year metrics
   const yearMetrics = years.map(year => {
+    const fixedMo = fixedMonthlyForYear(year)
+    const savMo   = savingsMonthlyForYear(year)
     const yearDebits = transactions.filter(t =>
       t.date?.startsWith(year) &&
       t.type === 'debit' &&
@@ -2220,11 +2230,11 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
     )
     const monthsWithData = new Set(yearDebits.map(t => t.date?.slice(0, 7))).size
     const variableSpend  = yearDebits.reduce((s, t) => s + t.amount, 0)
-    const fixedYTD       = fixedMonthlyTotal * monthsWithData
+    const fixedYTD       = fixedMo * monthsWithData
     const totalSpend     = variableSpend + fixedYTD
-    const savingsYTD     = monthlySavingsTotal * monthsWithData
+    const savingsYTD     = savMo * monthsWithData
     const avgMonthly     = monthsWithData > 0 ? totalSpend / monthsWithData : 0
-    return { year, variableSpend, fixedYTD, totalSpend, savingsYTD, monthsWithData, avgMonthly }
+    return { year, variableSpend, fixedYTD, totalSpend, savingsYTD, monthsWithData, avgMonthly, fixedMo }
   })
 
   const currM = yearMetrics.find(m => m.year === currentYear)
@@ -2239,6 +2249,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
   const monthlyData = MONTHS.map(m => {
     const entry = { name: m.label.slice(0, 3) }
     displayYears.forEach(year => {
+      const fixedMo = yearMetrics.find(ym => ym.year === year)?.fixedMo ?? 0
       const v = transactions
         .filter(t =>
           t.date?.startsWith(`${year}-${m.id}`) &&
@@ -2247,7 +2258,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
           !isSaving(t.category)
         )
         .reduce((s, t) => s + t.amount, 0)
-      entry[year] = v > 0 ? v + fixedMonthlyTotal : 0
+      entry[year] = v > 0 ? v + fixedMo : 0
     })
     return entry
   })
@@ -2264,6 +2275,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
   const cumulData = MONTHS.map((m, idx) => {
     const entry = { name: m.label.slice(0, 3) }
     displayYears.forEach(year => {
+      const fixedMo = yearMetrics.find(ym => ym.year === year)?.fixedMo ?? 0
       entry[year] = MONTHS.slice(0, idx + 1).reduce((sum, mm) => {
         const v = transactions
           .filter(t =>
@@ -2273,7 +2285,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
             !isSaving(t.category)
           )
           .reduce((s, t) => s + t.amount, 0)
-        return sum + (v > 0 ? v + fixedMonthlyTotal : 0)
+        return sum + (v > 0 ? v + fixedMo : 0)
       }, 0)
     })
     return entry
@@ -2384,7 +2396,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
 
       {/* Income Breakdown comparison cards */}
       {compCards && (
-        <div>
+        <div className="bg-white rounded-xl border border-gray-100 p-5">
           <div className="flex items-end justify-between mb-3">
             <div>
               <p className="text-sm font-semibold text-gray-800">Income Breakdown</p>
@@ -2398,7 +2410,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
               const delta  = !card.hideYoY && card.prevPct !== null && card.pct !== null ? card.pct - card.prevPct : null
               const isGood = delta === null ? null : (card.invert ? delta < 0 : delta > 0)
               return (
-                <div key={card.label} className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col">
+                <div key={card.label} className="bg-gray-50 rounded-xl border border-gray-100 p-4 flex flex-col">
                   <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest mb-2 leading-tight">{card.label}</p>
                   <p className="text-2xl font-bold tabular-nums" style={{ color: hasPct ? card.color : '#D1D5DB' }}>
                     {hasPct ? card.pct.toFixed(1) + '%' : '—'}
@@ -2452,14 +2464,16 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
               ))}
             </div>
           </div>
-          <BarChart width={620} height={260} data={monthlyData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-            <Tooltip formatter={(v, name) => [fmt(v), name]} itemSorter={item => -displayYears.indexOf(item.dataKey)} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} cursor={{ fill: '#F3F4F6' }} />
-            {displayYears.map((year, i) => (
-              <Bar key={year} dataKey={year} fill={YEAR_COLORS[i]} radius={[3, 3, 0, 0]} maxBarSize={32} />
-            ))}
-          </BarChart>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
+              <Tooltip formatter={(v, name) => [fmt(v), name]} itemSorter={item => -displayYears.indexOf(item.dataKey)} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} cursor={{ fill: '#F3F4F6' }} />
+              {displayYears.map((year, i) => (
+                <Bar key={year} dataKey={year} fill={YEAR_COLORS[i]} radius={[3, 3, 0, 0]} maxBarSize={32} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
         {/* Pie charts column */}
@@ -2533,14 +2547,16 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
         <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
           <p className="text-sm font-semibold text-gray-800 mb-1">Cumulative Spend</p>
           <p className="text-xs text-gray-400 mb-4">Running total through the year</p>
-          <LineChart width={460} height={200} data={cumulData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-            <Tooltip formatter={(v, name) => [fmt(v), name]} itemSorter={item => -displayYears.indexOf(item.dataKey)} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-            {displayYears.map((year, i) => (
-              <Line key={year} type="monotone" dataKey={year} stroke={YEAR_COLORS[i]} strokeWidth={2} dot={false} />
-            ))}
-          </LineChart>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={cumulData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
+              <Tooltip formatter={(v, name) => [fmt(v), name]} itemSorter={item => -displayYears.indexOf(item.dataKey)} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+              {displayYears.map((year, i) => (
+                <Line key={year} type="monotone" dataKey={year} stroke={YEAR_COLORS[i]} strokeWidth={2} dot={false} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
         </div>
 
         {/* YoY delta */}
@@ -2548,17 +2564,19 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
           <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
             <p className="text-sm font-semibold text-gray-800 mb-1">Month Delta</p>
             <p className="text-xs text-gray-400 mb-4">{currentYear} vs {prevYear} — teal = spent less</p>
-            <BarChart width={460} height={200} data={deltaData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={v => fmtK(Math.abs(v))} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-              <ReferenceLine y={0} stroke="#E5E7EB" strokeWidth={1} />
-              <Tooltip formatter={v => [fmt(Math.abs(v)), v >= 0 ? `More in ${currentYear}` : `Less in ${currentYear}`]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-              <Bar dataKey="delta" radius={[3, 3, 0, 0]} maxBarSize={32}>
-                {deltaData.map((entry, i) => (
-                  <Cell key={i} fill={entry.delta <= 0 ? '#0D7377' : '#EF4444'} />
-                ))}
-              </Bar>
-            </BarChart>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={deltaData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={v => fmtK(Math.abs(v))} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
+                <ReferenceLine y={0} stroke="#E5E7EB" strokeWidth={1} />
+                <Tooltip formatter={v => [fmt(Math.abs(v)), v >= 0 ? `More in ${currentYear}` : `Less in ${currentYear}`]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+                <Bar dataKey="delta" radius={[3, 3, 0, 0]} maxBarSize={32}>
+                  {deltaData.map((entry, i) => (
+                    <Cell key={i} fill={entry.delta <= 0 ? '#0D7377' : '#EF4444'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )}
 
@@ -3219,7 +3237,7 @@ export default function App() {
         }
 
         if (fixedRes.data) {
-          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category, frequency: r.frequency ?? 'monthly', isSavings: r.is_savings ?? isSaving(r.category) }))
+          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category, frequency: r.frequency ?? 'monthly', isSavings: r.is_savings ?? isSaving(r.category), year: r.year ?? null }))
           setFixedCosts(rows.filter(r => !r.isSavings))
           setSavingsEntries(rows.filter(r => r.isSavings))
         }
@@ -3249,14 +3267,15 @@ export default function App() {
     return () => { dataLoadedFor.current = null }
   }, [user])
 
-  async function addFixedCost(cost) {
+  async function addFixedCost(cost, year) {
     const freq = cost.frequency ?? 'monthly'
     const base = { user_id: user.id, name: cost.name, amount: cost.amount, category: cost.category }
-    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: false }).select().single()
+    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: false, year }).select().single()
+    if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: false }).select().single())
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
     if (!error && data) {
-      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: false }])
+      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: false, year: data.year ?? year ?? null }])
     }
   }
 
@@ -3274,14 +3293,15 @@ export default function App() {
     await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
   }
 
-  async function addSavingsEntry(entry) {
+  async function addSavingsEntry(entry, year) {
     const freq = entry.frequency ?? 'monthly'
     const base = { user_id: user.id, name: entry.name, amount: entry.amount, category: entry.category }
-    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: true }).select().single()
+    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: true, year }).select().single()
+    if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: true }).select().single())
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
     if (!error && data) {
-      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: true }])
+      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: true, year: data.year ?? year ?? null }])
     }
   }
 
@@ -3785,8 +3805,8 @@ export default function App() {
               selectedYear={selectedYear}
               setCategory={setCategory}
               salary={salary}
-              fixedCosts={fixedCosts}
-              savingsEntries={savingsEntries}
+              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
+              savingsEntries={savingsEntries.filter(e => !e.year || e.year === selectedYear)}
               variableOpen={dashVariableOpen} setVariableOpen={setDashVariableOpen}
               fixedOpen={dashFixedOpen}       setFixedOpen={setDashFixedOpen}
               savingsOpen={dashSavingsOpen}   setSavingsOpen={setDashSavingsOpen}
@@ -3947,15 +3967,15 @@ export default function App() {
               transactions={transactions}
               selectedMonth={selectedMonth}
               selectedYear={selectedYear}
-              fixedCosts={fixedCosts}
+              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
             />
           )}
 
           {activePage === 'categories' && (
             <CategoriesPage
               transactions={transactions}
-              fixedCosts={fixedCosts}
-              savingsEntries={savingsEntries}
+              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
+              savingsEntries={savingsEntries.filter(e => !e.year || e.year === selectedYear)}
               selectedYear={selectedYear}
               customTags={customTags}
               onTagCategory={addCustomTag}
@@ -3965,9 +3985,9 @@ export default function App() {
 
           {activePage === 'fixed' && (
             <FixedCostsPage
-              fixedCosts={fixedCosts}
+              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
               selectedYear={selectedYear}
-              onAdd={addFixedCost}
+              onAdd={cost => addFixedCost(cost, selectedYear)}
               onUpdate={updateFixedCost}
               onDelete={deleteFixedCost}
             />
@@ -3975,9 +3995,9 @@ export default function App() {
 
           {activePage === 'savings' && (
             <SavingsPage
-              savingsEntries={savingsEntries}
+              savingsEntries={savingsEntries.filter(e => !e.year || e.year === selectedYear)}
               selectedYear={selectedYear}
-              onAdd={addSavingsEntry}
+              onAdd={entry => addSavingsEntry(entry, selectedYear)}
               onUpdate={updateSavingsEntry}
               onDelete={deleteSavingsEntry}
             />
@@ -3987,8 +4007,8 @@ export default function App() {
             <AnnualSummary
               transactions={transactions}
               salary={salary}
-              fixedCosts={fixedCosts}
-              savingsEntries={savingsEntries}
+              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
+              savingsEntries={savingsEntries.filter(e => !e.year || e.year === selectedYear)}
               selectedYear={selectedYear}
             />
           )}
