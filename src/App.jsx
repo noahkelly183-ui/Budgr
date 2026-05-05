@@ -95,6 +95,25 @@ const CATEGORY_COLOR = Object.fromEntries(
 )
 CATEGORY_COLOR['Omit'] = '#9CA3AF'
 
+const CUSTOM_CAT_PALETTE = ['#6366F1','#F97316','#06B6D4','#A855F7','#84CC16','#EC4899','#14B8A6','#EF4444','#8B5CF6','#F59E0B']
+function customCatColor(str) {
+  let h = 0
+  for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h)
+  return CUSTOM_CAT_PALETTE[Math.abs(h) % CUSTOM_CAT_PALETTE.length]
+}
+
+function strSimilarity(a, b) {
+  if (a === b) return 1
+  const la = a.length, lb = b.length
+  if (la === 0 || lb === 0) return 0
+  const dp = Array.from({ length: la + 1 }, (_, i) => new Array(lb + 1).fill(0).map((_, j) => j === 0 ? i : 0))
+  for (let j = 1; j <= lb; j++) dp[0][j] = j
+  for (let i = 1; i <= la; i++)
+    for (let j = 1; j <= lb; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1])
+  return 1 - dp[la][lb] / Math.max(la, lb)
+}
+
 const FIXED_CATS = new Set([
   'Rent / Mortgage', 'Utilities', 'Car Payment / Insurance',
   'Phone & Internet', 'Subscriptions', 'Insurance',
@@ -290,11 +309,17 @@ function CategoryCombobox({ value, onChange }) {
 
 // ─── TransactionView (Transactions page — grouped by month with filter) ───────
 
-function TransactionView({ txns, setCategory }) {
+function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzyAccept, onFuzzyDismiss }) {
   const [filter, setFilter] = useState('all')
 
-  const untaggedCount = txns.filter(t => !t.category).length
-  const filtered      = filter === 'untagged' ? txns.filter(t => !t.category) : txns
+  const yearTxns      = selectedYear ? txns.filter(t => t.date?.startsWith(selectedYear)) : txns
+  const untaggedCount = yearTxns.filter(t => !t.category).length
+  const manualCount   = yearTxns.filter(t => t.category && !t.fromMemory).length
+  const filtered      = filter === 'untagged'
+    ? yearTxns.filter(t => !t.category)
+    : filter === 'manual'
+      ? yearTxns.filter(t => t.category && !t.fromMemory)
+      : yearTxns
 
   const groupMap = new Map()
   for (const t of filtered) {
@@ -304,8 +329,8 @@ function TransactionView({ txns, setCategory }) {
   }
   const groups = [...groupMap.entries()].map(([ym, txns]) => ({ ym, txns }))
 
-  const debits       = txns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
-  const refunds      = txns.filter(t => t.category === 'Refund / Return')
+  const debits       = yearTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
+  const refunds      = yearTxns.filter(t => t.category === 'Refund / Return')
   const total        = debits.reduce((sum, t) => sum + t.amount, 0)
   const totalRefunds = refunds.reduce((sum, t) => sum + t.amount, 0)
 
@@ -349,7 +374,50 @@ function TransactionView({ txns, setCategory }) {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setFilter('manual')}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              filter === 'manual'
+                ? 'bg-[#0D7377] text-white'
+                : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Manually Tagged
+            {manualCount > 0 && (
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                filter === 'manual' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'
+              }`}>
+                {manualCount}
+              </span>
+            )}
+          </button>
         </div>
+
+        {/* Fuzzy match prompt */}
+        {fuzzyPrompt && (
+          <div className="mb-4 flex items-center justify-between gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-indigo-500 text-base shrink-0">✦</span>
+              <p className="text-xs text-indigo-700 min-w-0">
+                Apply <span className="font-semibold">"{fuzzyPrompt.category}"</span> to {fuzzyPrompt.matches.length} similar untagged transaction{fuzzyPrompt.matches.length !== 1 ? 's' : ''}?
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={onFuzzyAccept}
+                className="px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+              >
+                Apply
+              </button>
+              <button
+                onClick={onFuzzyDismiss}
+                className="px-3 py-1 rounded-lg text-xs font-medium text-indigo-500 hover:text-indigo-700 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Transaction list */}
         <div>
@@ -368,7 +436,9 @@ function TransactionView({ txns, setCategory }) {
             <div className="bg-white border border-gray-100 border-t-0 rounded-b-xl px-4 py-8 text-center text-gray-400 text-xs">
               {filter === 'untagged'
                 ? 'All transactions are tagged!'
-                : 'No transactions yet — import a CSV to get started'}
+                : filter === 'manual'
+                  ? 'No manually tagged transactions yet'
+                  : 'No transactions yet — import a CSV to get started'}
             </div>
           ) : groups.map((group, gi) => {
             const groupDebits = group.txns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
@@ -428,11 +498,14 @@ function TransactionView({ txns, setCategory }) {
 
 const CATS_SET = new Set(CATEGORIES)
 
-function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
+function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear, customTags, onTagCategory, onUntagCategory }) {
+  const [editingTag, setEditingTag] = useState(null)
+  const [tagInput, setTagInput]     = useState('')
+
   const allDebitsAnn = transactions.filter(t =>
     t.type === 'debit' &&
     !EXCLUDE_FROM_TOTALS.has(t.category) &&
-    yearMonthOf(t.date).slice(0, 4) === APP_YEAR
+    yearMonthOf(t.date).slice(0, 4) === selectedYear
   )
   const monthsWithData = new Set(allDebitsAnn.map(t => yearMonthOf(t.date))).size
 
@@ -470,7 +543,29 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
     .sort(([, a], [, b]) => b - a)
   const savingsYTD = savingsCatEntries.reduce((s, [, v]) => s + v, 0)
 
-  // Build the card list: fixed costs + spending groups + custom + savings
+  // Custom Tags card — group tagged categories by tag name
+  const tagFor = cat => customTags.find(t => t.category === cat)?.tag
+  const tagGroupMap = {}
+  for (const { category, tag } of customTags) {
+    if (!tagGroupMap[tag]) tagGroupMap[tag] = []
+    tagGroupMap[tag].push(category)
+  }
+  const customTagGroups = Object.entries(tagGroupMap)
+    .map(([tag, cats]) => ({
+      tag,
+      items: cats.map(cat => [cat, varByCategory[cat] || 0]).sort(([, a], [, b]) => b - a),
+    }))
+    .sort((a, b) => a.tag.localeCompare(b.tag))
+  const customTagsTotal = customTagGroups.reduce((s, g) => s + g.items.reduce((ss, [, v]) => ss + v, 0), 0)
+
+  function commitTag(category) {
+    const trimmed = tagInput.trim()
+    if (trimmed) onTagCategory(category, trimmed)
+    setEditingTag(null)
+    setTagInput('')
+  }
+
+  // Build the card list: fixed costs + spending groups + custom tags + custom categories + savings
   const cards = [
     {
       name: 'Fixed Costs',
@@ -484,12 +579,20 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
       hex: g.hex,
       items: g.entries,
       total: g.total,
+      taggable: true,
     })),
+    ...(customTagGroups.length > 0 ? [{
+      name: 'Custom Tags',
+      hex: '#8B5CF6',
+      groups: customTagGroups,
+      total: customTagsTotal,
+    }] : []),
     ...(customEntries.length > 0 ? [{
       name: 'Custom Categories',
       hex: '#8B5CF6',
       items: customEntries,
       total: customTotal,
+      taggable: true,
     }] : []),
     {
       name: 'Savings',
@@ -504,7 +607,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
-        <p className="text-sm font-semibold text-gray-800">Categories — {APP_YEAR} YTD</p>
+        <p className="text-sm font-semibold text-gray-800">Categories — {selectedYear} YTD</p>
         {monthsWithData > 0 && (
           <span className="text-xs text-gray-400">({monthsWithData} mo)</span>
         )}
@@ -521,18 +624,87 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
                 <p className="text-sm font-semibold text-gray-800">{card.name}</p>
               </div>
               <span className="text-[11px] text-gray-400">
-                {card.items.length} {card.items.length === 1 ? 'item' : 'items'}
+                {card.groups
+                  ? `${customTags.length} tagged`
+                  : `${card.items.length} ${card.items.length === 1 ? 'item' : 'items'}`}
               </span>
             </div>
 
             {/* Category rows */}
             <div className="space-y-3">
-              {card.items.length > 0 ? card.items.map(([label, amt]) => {
+              {card.groups ? (
+                // Custom Tags card — grouped by tag name
+                card.groups.length > 0 ? card.groups.map(({ tag, items }) => (
+                  <div key={tag}>
+                    <p className="text-[10px] font-semibold text-purple-400 uppercase tracking-wider mb-2">{tag}</p>
+                    {items.map(([label, amt]) => {
+                      const pct = card.total > 0 ? (amt / card.total) * 100 : 0
+                      return (
+                        <div key={label} className="mb-2 last:mb-0">
+                          <div className="flex justify-between items-center text-xs mb-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
+                              <span className="text-gray-600 truncate">{label}</span>
+                              <button
+                                type="button"
+                                onClick={() => onUntagCategory(label)}
+                                className="text-[10px] text-purple-300 hover:text-red-400 transition-colors shrink-0"
+                                title="Remove tag"
+                              >×</button>
+                            </div>
+                            <span className="tabular-nums font-medium shrink-0 text-gray-800">{fmt(amt)}</span>
+                          </div>
+                          <div className="h-[3px] bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: card.hex }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )) : (
+                  <p className="text-xs italic text-gray-400">No tagged categories yet</p>
+                )
+              ) : card.items.length > 0 ? card.items.map(([label, amt]) => {
                 const pct = card.total > 0 ? (amt / card.total) * 100 : 0
+                const existingTag = card.taggable ? tagFor(label) : null
                 return (
                   <div key={label}>
                     <div className="flex justify-between items-center text-xs mb-1.5">
-                      <span className="text-gray-600 truncate mr-2">{label}</span>
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
+                        <span className="text-gray-600 truncate">{label}</span>
+                        {card.taggable && (
+                          editingTag === label ? (
+                            <form
+                              onSubmit={e => { e.preventDefault(); commitTag(label) }}
+                              className="flex items-center gap-1 shrink-0"
+                            >
+                              <input
+                                autoFocus
+                                value={tagInput}
+                                onChange={e => setTagInput(e.target.value)}
+                                onBlur={() => commitTag(label)}
+                                className="text-[10px] border border-purple-300 rounded px-1.5 py-0.5 w-20 outline-none focus:border-purple-500"
+                                placeholder="tag name"
+                              />
+                            </form>
+                          ) : existingTag ? (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-full shrink-0">
+                              {existingTag}
+                              <button
+                                type="button"
+                                onClick={() => onUntagCategory(label)}
+                                className="ml-0.5 text-purple-400 hover:text-purple-700 leading-none"
+                              >×</button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => { setEditingTag(label); setTagInput('') }}
+                              className="text-[10px] text-gray-300 hover:text-purple-400 transition-colors shrink-0"
+                              title="Add tag"
+                            >+ tag</button>
+                          )
+                        )}
+                      </div>
                       <span className={`tabular-nums font-medium shrink-0 ${card.accent ? 'text-[#0D7377]' : 'text-gray-800'}`}>
                         {fmt(amt)}
                       </span>
@@ -565,13 +737,19 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries }) {
 
 // ─── FixedCostsPage ───────────────────────────────────────────────────────────
 
-function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
-  const [name, setName]             = useState('')
-  const [amount, setAmount]         = useState('')
-  const [category, setCategory]     = useState('')
-  const [frequency, setFrequency]   = useState('monthly')
-  const [freqFilter, setFreqFilter] = useState('all')
-  const [localVals, setLocalVals]   = useState({})
+function FixedCostsPage({ fixedCosts, selectedYear, onAdd, onUpdate, onDelete }) {
+  const [name, setName]               = useState('')
+  const [amount, setAmount]           = useState('')
+  const [category, setCategory]       = useState('')
+  const [customCatInput, setCustomCatInput] = useState('')
+  const [frequency, setFrequency]     = useState('monthly')
+  const [freqFilter, setFreqFilter]   = useState('all')
+  const [localVals, setLocalVals]         = useState({})
+  const [customCatById, setCustomCatById] = useState({})
+  const [editingCustomCatId, setEditingCustomCatId] = useState(null)
+
+  const isCustomCat = cat => !!cat && !CATEGORIES.includes(cat)
+  const addCat = category === '__custom__' ? customCatInput.trim() : category
 
   function getLocal(id, field, fallback) {
     return localVals[id]?.[field] ?? fallback
@@ -598,9 +776,9 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
 
   function handleAdd() {
     const parsed = parseFloat(amount)
-    if (!name.trim() || !parsed || !category) return
-    onAdd({ name: name.trim(), amount: parsed, category, frequency })
-    setName(''); setAmount(''); setCategory(''); setFrequency('monthly')
+    if (!name.trim() || !parsed || !addCat) return
+    onAdd({ name: name.trim(), amount: parsed, category: addCat, frequency })
+    setName(''); setAmount(''); setCategory(''); setCustomCatInput(''); setFrequency('monthly')
   }
 
   const filtered     = freqFilter === 'all' ? fixedCosts : fixedCosts.filter(c => (c.frequency ?? 'monthly') === freqFilter)
@@ -638,14 +816,20 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
           </div>
           <div className="w-48">
             <label className="block text-xs text-gray-500 mb-1.5">Category</label>
-            <select value={category} onChange={e => setCategory(e.target.value)} className={addSelect}>
-              <option value="">Select category…</option>
-              {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+            {category === '__custom__' ? (
+              <input autoFocus type="text" value={customCatInput} onChange={e => setCustomCatInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="Type category name…" className={addInput} />
+            ) : (
+              <select value={category} onChange={e => setCategory(e.target.value)} className={addSelect}>
+                <option value="">Select category…</option>
+                {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+                <option value="__custom__">Custom…</option>
+              </select>
+            )}
           </div>
-          <button onClick={handleAdd} disabled={!name.trim() || !amount || !category}
+          <button onClick={handleAdd} disabled={!name.trim() || !amount || !addCat}
             className="px-5 py-2 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
@@ -711,18 +895,66 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
                   {isAnnual && <span className="text-[10px] text-gray-400">/yr</span>}
                 </div>
 
-                <div className="relative shrink-0" style={{ backgroundColor: hex + '1a', borderRadius: '9999px' }}>
-                  <select
-                    value={localCat}
-                    onChange={e => { setLocal(cost.id, 'category', e.target.value); commitSelect(cost, 'category', e.target.value) }}
-                    className="text-xs font-medium pl-2.5 pr-5 py-0.5 rounded-full border-none outline-none cursor-pointer bg-transparent appearance-none"
-                    style={{ color: hex }}>
-                    {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                  <svg className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5" style={{ color: hex }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                </div>
+                {localCat === '__custom__' ? (
+                  <input
+                    autoFocus
+                    value={customCatById[cost.id] ?? ''}
+                    onChange={e => setCustomCatById(p => ({ ...p, [cost.id]: e.target.value }))}
+                    onBlur={() => {
+                      const val = customCatById[cost.id]?.trim()
+                      if (val) { setLocal(cost.id, 'category', val); commitSelect(cost, 'category', val) }
+                      else setLocal(cost.id, 'category', cost.category)
+                    }}
+                    onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                    className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#0D7377] bg-white text-gray-700 w-32 shrink-0"
+                    placeholder="Category…"
+                  />
+                ) : isCustomCat(localCat) ? (
+                  editingCustomCatId === cost.id ? (
+                    <input
+                      autoFocus
+                      value={customCatById[cost.id] ?? localCat}
+                      onChange={e => setCustomCatById(p => ({ ...p, [cost.id]: e.target.value }))}
+                      onBlur={() => {
+                        const val = (customCatById[cost.id] ?? localCat)?.trim()
+                        if (val) { setLocal(cost.id, 'category', val); commitSelect(cost, 'category', val) }
+                        setEditingCustomCatId(null)
+                      }}
+                      onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                      className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#0D7377] bg-white text-gray-700 w-32 shrink-0"
+                      placeholder="Category…"
+                    />
+                  ) : (() => {
+                    const chex = customCatColor(localCat)
+                    return (
+                      <button
+                        onClick={() => { setEditingCustomCatId(cost.id); setCustomCatById(p => ({ ...p, [cost.id]: localCat })) }}
+                        className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0 cursor-pointer"
+                        style={{ backgroundColor: chex + '1a', color: chex }}
+                        title="Click to edit"
+                      >{localCat}</button>
+                    )
+                  })()
+                ) : (
+                  <div className="relative shrink-0" style={{ backgroundColor: hex + '1a', borderRadius: '9999px' }}>
+                    <select
+                      value={localCat}
+                      onChange={e => {
+                        const val = e.target.value
+                        setLocal(cost.id, 'category', val)
+                        if (val === '__custom__') setCustomCatById(p => ({ ...p, [cost.id]: '' }))
+                        else commitSelect(cost, 'category', val)
+                      }}
+                      className="text-xs font-medium pl-2.5 pr-5 py-0.5 rounded-full border-none outline-none cursor-pointer bg-transparent appearance-none"
+                      style={{ color: hex }}>
+                      {CATEGORIES.filter(c => !EXCLUDE_FROM_TOTALS.has(c) && c !== 'Refund / Return' && !SAVINGS_CATS.includes(c)).map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                      <option value="__custom__">Custom…</option>
+                    </select>
+                    <svg className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5" style={{ color: hex }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                )}
 
                 <button onClick={() => onDelete(cost.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0" title="Remove">✕</button>
               </div>
@@ -730,7 +962,7 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
           })}
 
           <div className="px-5 py-3 bg-gray-50/60 flex justify-between items-center">
-            <span className="text-xs font-medium text-gray-500">Monthly total</span>
+            <span className="text-xs font-medium text-gray-500">Monthly total · <span className="text-gray-400">{selectedYear} projection: {fmt(monthlyTotal * 12)}</span></span>
             <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(monthlyTotal)}</span>
           </div>
         </div>
@@ -742,19 +974,25 @@ function FixedCostsPage({ fixedCosts, onAdd, onUpdate, onDelete }) {
 
 // ─── SavingsPage ─────────────────────────────────────────────────────────────
 
-function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
-  const [name, setName]             = useState('')
-  const [amount, setAmount]         = useState('')
-  const [category, setCategory]     = useState('')
-  const [frequency, setFrequency]   = useState('monthly')
-  const [freqFilter, setFreqFilter] = useState('all')
-  const [localVals, setLocalVals]   = useState({})
+function SavingsPage({ savingsEntries, selectedYear, onAdd, onUpdate, onDelete }) {
+  const [name, setName]               = useState('')
+  const [amount, setAmount]           = useState('')
+  const [category, setCategory]       = useState('')
+  const [customCatInput, setCustomCatInput] = useState('')
+  const [frequency, setFrequency]     = useState('monthly')
+  const [freqFilter, setFreqFilter]   = useState('all')
+  const [localVals, setLocalVals]         = useState({})
+  const [customCatById, setCustomCatById] = useState({})
+  const [editingCustomCatId, setEditingCustomCatId] = useState(null)
+
+  const isCustomCat = cat => !!cat && !SAVINGS_CATS.includes(cat)
+  const addCat = category === '__custom__' ? customCatInput.trim() : category
 
   function handleAdd() {
     const parsed = parseFloat(amount)
-    if (!name.trim() || !parsed || !category) return
-    onAdd({ name: name.trim(), amount: parsed, category, frequency })
-    setName(''); setAmount(''); setCategory(''); setFrequency('monthly')
+    if (!name.trim() || !parsed || !addCat) return
+    onAdd({ name: name.trim(), amount: parsed, category: addCat, frequency })
+    setName(''); setAmount(''); setCategory(''); setCustomCatInput(''); setFrequency('monthly')
   }
 
   const filtered     = freqFilter === 'all' ? savingsEntries : savingsEntries.filter(e => (e.frequency ?? 'monthly') === freqFilter)
@@ -815,12 +1053,18 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
           </div>
           <div className="w-48">
             <label className="block text-xs text-gray-500 mb-1.5">Type</label>
-            <select value={category} onChange={e => setCategory(e.target.value)} className={addSelect}>
-              <option value="">Select type…</option>
-              {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            {category === '__custom__' ? (
+              <input autoFocus type="text" value={customCatInput} onChange={e => setCustomCatInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="Type savings type…" className={addInput} />
+            ) : (
+              <select value={category} onChange={e => setCategory(e.target.value)} className={addSelect}>
+                <option value="">Select type…</option>
+                {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="__custom__">Custom…</option>
+              </select>
+            )}
           </div>
-          <button onClick={handleAdd} disabled={!name.trim() || !amount || !category}
+          <button onClick={handleAdd} disabled={!name.trim() || !amount || !addCat}
             className="px-5 py-2 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
@@ -886,16 +1130,64 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
                   {isAnnual && <span className="text-[10px] text-gray-400">/yr</span>}
                 </div>
 
-                <div className="relative shrink-0" style={{ backgroundColor: hex + '1a', borderRadius: '9999px' }}>
-                  <select
-                    value={localCat}
-                    onChange={e => { setLocal(entry.id, 'category', e.target.value); commitSelect(entry, 'category', e.target.value) }}
-                    className="text-xs font-medium pl-2.5 pr-5 py-0.5 rounded-full border-none outline-none cursor-pointer bg-transparent appearance-none"
-                    style={{ color: hex }}>
-                    {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <svg className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5" style={{ color: hex }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                </div>
+                {localCat === '__custom__' ? (
+                  <input
+                    autoFocus
+                    value={customCatById[entry.id] ?? ''}
+                    onChange={e => setCustomCatById(p => ({ ...p, [entry.id]: e.target.value }))}
+                    onBlur={() => {
+                      const val = customCatById[entry.id]?.trim()
+                      if (val) { setLocal(entry.id, 'category', val); commitSelect(entry, 'category', val) }
+                      else setLocal(entry.id, 'category', entry.category)
+                    }}
+                    onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                    className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#0D7377] bg-white text-gray-700 w-32 shrink-0"
+                    placeholder="Type…"
+                  />
+                ) : isCustomCat(localCat) ? (
+                  editingCustomCatId === entry.id ? (
+                    <input
+                      autoFocus
+                      value={customCatById[entry.id] ?? localCat}
+                      onChange={e => setCustomCatById(p => ({ ...p, [entry.id]: e.target.value }))}
+                      onBlur={() => {
+                        const val = (customCatById[entry.id] ?? localCat)?.trim()
+                        if (val) { setLocal(entry.id, 'category', val); commitSelect(entry, 'category', val) }
+                        setEditingCustomCatId(null)
+                      }}
+                      onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                      className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#0D7377] bg-white text-gray-700 w-32 shrink-0"
+                      placeholder="Type…"
+                    />
+                  ) : (() => {
+                    const chex = customCatColor(localCat)
+                    return (
+                      <button
+                        onClick={() => { setEditingCustomCatId(entry.id); setCustomCatById(p => ({ ...p, [entry.id]: localCat })) }}
+                        className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0 cursor-pointer"
+                        style={{ backgroundColor: chex + '1a', color: chex }}
+                        title="Click to edit"
+                      >{localCat}</button>
+                    )
+                  })()
+                ) : (
+                  <div className="relative shrink-0" style={{ backgroundColor: hex + '1a', borderRadius: '9999px' }}>
+                    <select
+                      value={localCat}
+                      onChange={e => {
+                        const val = e.target.value
+                        setLocal(entry.id, 'category', val)
+                        if (val === '__custom__') setCustomCatById(p => ({ ...p, [entry.id]: '' }))
+                        else commitSelect(entry, 'category', val)
+                      }}
+                      className="text-xs font-medium pl-2.5 pr-5 py-0.5 rounded-full border-none outline-none cursor-pointer bg-transparent appearance-none"
+                      style={{ color: hex }}>
+                      {SAVINGS_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                      <option value="__custom__">Custom…</option>
+                    </select>
+                    <svg className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5" style={{ color: hex }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                )}
 
                 <button onClick={() => onDelete(entry.id)} className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0" title="Remove">✕</button>
               </div>
@@ -903,7 +1195,7 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
           })}
 
           <div className="px-5 py-3 bg-[#F0FDF9]/60 flex justify-between items-center">
-            <span className="text-xs font-medium text-[#0D7377]">Monthly total</span>
+            <span className="text-xs font-medium text-[#0D7377]">Monthly total · <span className="text-[#0D7377]/50">{selectedYear} projection: {fmt(monthlyTotal * 12)}</span></span>
             <span className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(monthlyTotal)}</span>
           </div>
         </div>
@@ -915,9 +1207,9 @@ function SavingsPage({ savingsEntries, onAdd, onUpdate, onDelete }) {
 
 // ─── MonthlyDashboard ─────────────────────────────────────────────────────────
 
-function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts, savingsEntries, variableOpen, setVariableOpen, fixedOpen, setFixedOpen, savingsOpen, setSavingsOpen }) {
+function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, salary, fixedCosts, savingsEntries, variableOpen, setVariableOpen, fixedOpen, setFixedOpen, savingsOpen, setSavingsOpen }) {
 
-  const monthTxns = txns.filter(t => yearMonthOf(t.date) === APP_YEAR + '-' + selectedMonth)
+  const monthTxns = txns.filter(t => yearMonthOf(t.date) === selectedYear + '-' + selectedMonth)
   const allDebits   = monthTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
   const debits      = allDebits.filter(t => !isSaving(t.category))
   const savingsTxns = allDebits.filter(t => isSaving(t.category))
@@ -927,14 +1219,15 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
   const fixedMonthlyTotal = fixedCosts.reduce((s, c) => s + monthlyRate(c), 0)
   const totalSpent        = txnSpent + fixedMonthlyTotal
 
-  const annualNet  = salary.gross > 0
+  const salaryAnnualNet = salary.gross > 0
     ? salary.gross * (1 - salary.taxRate / 100) - salary.deductions * 12
     : 0
+  const annualNet  = salaryAnnualNet + (salary.extraIncome || 0) * 12
   const monthlyNet = annualNet / 12
 
-  // Savings = amounts entered on the Savings page
   const savingsEntriesTotal = savingsEntries.reduce((s, e) => s + monthlyRate(e), 0)
-  const totalSavings        = savingsEntriesTotal
+  const leftover            = monthlyNet > 0 ? Math.max(0, monthlyNet - totalSpent) : 0
+  const totalSavings        = leftover + savingsEntriesTotal
   const savingsRate         = monthlyNet > 0 ? (totalSavings / monthlyNet) * 100 : null
 
   // Savings breakdown by category from entries
@@ -1250,15 +1543,20 @@ function MonthlyDashboard({ txns, selectedMonth, setCategory, salary, fixedCosts
 
 // ─── SalaryPage ───────────────────────────────────────────────────────────────
 
-function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixedCosts }) {
+function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selectedYear, fixedCosts }) {
   const [grossDisplay, setGrossDisplay] = useState(
     salary.gross > 0 ? salary.gross.toLocaleString('en-US') : ''
   )
+  const [extraDisplay, setExtraDisplay] = useState(
+    salary.extraIncome > 0 ? salary.extraIncome.toLocaleString('en-US') : ''
+  )
 
-  const annualNet  = salary.gross > 0
+  const salaryAnnualNet = salary.gross > 0
     ? salary.gross * (1 - salary.taxRate / 100) - salary.deductions * 12
     : 0
-  const monthlyNet = annualNet / 12
+  const monthlyExtra = salary.extraIncome || 0
+  const annualNet    = salaryAnnualNet + monthlyExtra * 12
+  const monthlyNet   = annualNet / 12
 
   const monthIdx = parseInt(selectedMonth, 10)
 
@@ -1267,7 +1565,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
   const todayMonthIdx = today.getMonth() + 1
   const dayOfMonth    = today.getDate()
   const daysInMonth   = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
-  const monthsElapsed = todayYear === APP_YEAR
+  const monthsElapsed = todayYear === selectedYear
     ? (todayMonthIdx - 1) + dayOfMonth / daysInMonth
     : 0
   const incomeToDate  = monthlyNet * monthsElapsed
@@ -1278,7 +1576,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
   const spentToDate = debits
     .filter(t => {
       const ym = yearMonthOf(t.date)
-      return ym.slice(0, 4) === APP_YEAR && parseInt(ym.slice(5), 10) <= monthIdx
+      return ym.slice(0, 4) === selectedYear && parseInt(ym.slice(5), 10) <= monthIdx
     })
     .reduce((s, t) => s + t.amount, 0)
 
@@ -1286,7 +1584,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
     debits
       .filter(t => {
         const ym = yearMonthOf(t.date)
-        return ym.slice(0, 4) === APP_YEAR && parseInt(ym.slice(5), 10) <= monthIdx
+        return ym.slice(0, 4) === selectedYear && parseInt(ym.slice(5), 10) <= monthIdx
       })
       .map(t => yearMonthOf(t.date))
   ).size
@@ -1310,6 +1608,13 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
     const num = raw ? parseInt(raw, 10) : 0
     setGrossDisplay(raw ? num.toLocaleString('en-US') : '')
     update('gross', num)
+  }
+
+  function handleExtraIncomeChange(e) {
+    const raw = e.target.value.replace(/[^0-9]/g, '')
+    const num = raw ? parseInt(raw, 10) : 0
+    setExtraDisplay(raw ? num.toLocaleString('en-US') : '')
+    update('extraIncome', num)
   }
 
   return (
@@ -1369,6 +1674,23 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
             </div>
           </div>
 
+          {/* Other Monthly Income */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Other Monthly Income</label>
+            <p className="text-[10px] text-gray-400 mb-1.5 italic">e.g. freelance, rental, side income — added on top of your salary each month</p>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
+              <span className="px-3 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={extraDisplay}
+                onChange={handleExtraIncomeChange}
+                placeholder="0"
+                className="flex-1 px-3 py-2.5 text-sm text-gray-800 outline-none"
+              />
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -1381,7 +1703,9 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
           <p className={`text-2xl font-semibold ${annualNet > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
             {annualNet > 0 ? fmt(annualNet) : '—'}
           </p>
-          <p className="text-[10px] text-gray-400 italic mt-1.5">Gross − Tax − (Deductions × 12)</p>
+          <p className="text-[10px] text-gray-400 italic mt-1.5">
+            {monthlyExtra > 0 ? 'Gross − Tax − Deductions + Other Income' : 'Gross − Tax − (Deductions × 12)'}
+          </p>
         </div>
 
         {/* Card 2: Income to Date */}
@@ -1391,7 +1715,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
             {incomeToDate > 0 ? fmt(incomeToDate) : '—'}
           </p>
           <p className="text-[10px] text-gray-400 italic mt-1.5">
-            Monthly Net × {todayYear === APP_YEAR
+            Monthly Net × {todayYear === selectedYear
               ? `${todayMonthIdx - 1} mo + ${dayOfMonth} day${dayOfMonth !== 1 ? 's' : ''} (through ${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
               : '—'}
           </p>
@@ -1450,11 +1774,14 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, fixed
 
 // ─── AnnualSummary ────────────────────────────────────────────────────────────
 
-function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
+function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selectedYear }) {
   const gross            = salary.gross
   const taxAmount        = gross * (salary.taxRate / 100)
   const deductionsAnnual = salary.deductions * 12
-  const annualNet        = gross > 0 ? gross - taxAmount - deductionsAnnual : 0
+  const monthlyExtra     = salary.extraIncome || 0
+  const extraAnnual      = monthlyExtra * 12
+  const salaryAnnualNet  = gross > 0 ? gross - taxAmount - deductionsAnnual : 0
+  const annualNet        = salaryAnnualNet + extraAnnual
   const monthlyNet       = annualNet / 12
 
   const fixedMonthlyTotal    = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + monthlyRate(c), 0)
@@ -1463,7 +1790,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
   const allDebitsAnn = transactions.filter(t =>
     t.type === 'debit' &&
     !EXCLUDE_FROM_TOTALS.has(t.category) &&
-    yearMonthOf(t.date).slice(0, 4) === APP_YEAR
+    yearMonthOf(t.date).slice(0, 4) === selectedYear
   )
   const debits = allDebitsAnn.filter(t => !isSaving(t.category))
 
@@ -1474,27 +1801,30 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
   const projectedVariable  = avgMonthlyVariable !== null ? avgMonthlyVariable * 12 : null
   const totalExpensesProj  = projectedVariable !== null ? fixedAnnualProjected + projectedVariable : null
 
-  // YTD figures — today's date for income
+  // YTD figures — today's date for income (only relevant when viewing current year)
   const today         = new Date()
   const todayYear     = today.getFullYear().toString()
   const todayMonthIdx = today.getMonth() + 1
   const dayOfMonth    = today.getDate()
   const daysInMonth   = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
-  const monthsElapsed = todayYear === APP_YEAR ? (todayMonthIdx - 1) + dayOfMonth / daysInMonth : monthsWithData
+  const monthsElapsed = todayYear === selectedYear ? (todayMonthIdx - 1) + dayOfMonth / daysInMonth : monthsWithData
 
   const fixedYTD    = fixedMonthlyTotal * monthsElapsed
   const totalExpYTD = txnSpent + fixedYTD
   const incomeToDate = monthlyNet * monthsElapsed
 
-  // Savings = savings entries (monthly amounts from Savings page) × elapsed months
   const monthlySavingsTotal = savingsEntries.reduce((s, e) => s + monthlyRate(e), 0)
-  const allSavingsYTD       = monthlySavingsTotal * monthsElapsed
+  const leftoverYTD         = Math.max(0, incomeToDate - totalExpYTD)
+  const allSavingsYTD       = leftoverYTD + monthlySavingsTotal * monthsElapsed
   const totalSavingsYTD     = allSavingsYTD > 0 ? allSavingsYTD : null
   const savingsRateYTD      = incomeToDate > 0 && allSavingsYTD > 0 ? (allSavingsYTD / incomeToDate) * 100 : null
 
-  // Projected savings based on savings entries monthly total
-  const projectedSavings = monthlySavingsTotal > 0 ? monthlySavingsTotal * 12 : null
-  const savingsRate      = annualNet > 0 && projectedSavings !== null ? (projectedSavings / annualNet) * 100 : null
+  // Projected savings = projected leftover + savings entries × 12
+  const projectedLeftover = totalExpensesProj !== null ? Math.max(0, annualNet - totalExpensesProj) : null
+  const projectedSavings  = projectedLeftover !== null
+    ? projectedLeftover + monthlySavingsTotal * 12
+    : (monthlySavingsTotal > 0 ? monthlySavingsTotal * 12 : null)
+  const savingsRate       = annualNet > 0 && projectedSavings !== null ? (projectedSavings / annualNet) * 100 : null
 
   // Per-category breakdown for income statement
   const fixedCostItems = fixedCosts.filter(c => !isSaving(c.category))
@@ -1525,7 +1855,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
 
   const chartData = MONTHS.map(m => {
     const txnTotal = debits
-      .filter(t => yearMonthOf(t.date) === APP_YEAR + '-' + m.id)
+      .filter(t => yearMonthOf(t.date) === selectedYear + '-' + m.id)
       .reduce((s, t) => s + t.amount, 0)
     const total = txnTotal > 0 ? txnTotal + fixedMonthlyTotal : 0
     return { name: m.label.slice(0, 3), spend: total }
@@ -1591,7 +1921,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
 
       {/* Annual P&L card */}
       <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
-        <h2 className="text-sm font-semibold text-gray-800 mb-4">Annual Financial Summary — {APP_YEAR}</h2>
+        <h2 className="text-sm font-semibold text-gray-800 mb-4">Annual Financial Summary — {selectedYear}</h2>
 
         {/* Income rows */}
         <div className="divide-y divide-gray-50">
@@ -1607,6 +1937,12 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
             <span className="text-sm text-gray-400 italic">Monthly Deductions × 12</span>
             <span className="text-sm italic text-gray-400 tabular-nums">{salary.deductions > 0 ? '− ' + fmt(deductionsAnnual) : '—'}</span>
           </div>
+          {monthlyExtra > 0 && (
+            <div className="flex justify-between items-center py-2.5">
+              <span className="text-sm text-gray-500">Other Monthly Income × 12</span>
+              <span className="text-sm font-medium text-[#0D7377] tabular-nums">+ {fmt(extraAnnual)}</span>
+            </div>
+          )}
         </div>
         <div className="flex justify-between items-center py-3 border-t-2 border-gray-200">
           <span className="text-sm font-semibold text-gray-700">Annual Net Income</span>
@@ -1668,7 +2004,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
       {/* YTD Income Statement */}
       <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
         <h2 className="text-sm font-semibold text-gray-800 mb-4">
-          YTD Income Statement — {APP_YEAR}
+          YTD Income Statement — {selectedYear}
           {monthsWithData > 0 && <span className="ml-2 text-xs font-normal text-gray-400">({monthsWithData} mo)</span>}
         </h2>
 
@@ -1844,7 +2180,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries }) {
 
 // ─── YearComparison ──────────────────────────────────────────────────────────
 
-function YearComparison({ transactions, fixedCosts, savingsEntries }) {
+function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
   const fixedMonthlyTotal   = fixedCosts.filter(c => !isSaving(c.category)).reduce((s, c) => s + monthlyRate(c), 0)
   const monthlySavingsTotal = savingsEntries.reduce((s, e) => s + monthlyRate(e), 0)
 
@@ -1853,6 +2189,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
   )].sort()
 
   const YEAR_COLORS = ['#0D7377', '#F59E0B', '#A855F7', '#EC4899']
+  const [selectedYear, setSelectedYear] = useState(null)
 
   if (years.length === 0) {
     return (
@@ -1868,8 +2205,10 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
     )
   }
 
-  const currentYear = years[years.length - 1]
-  const prevYear    = years.length >= 2 ? years[years.length - 2] : null
+  const currentYear  = selectedYear && years.includes(selectedYear) ? selectedYear : years[years.length - 1]
+  const selectedIdx  = years.indexOf(currentYear)
+  const prevYear     = selectedIdx > 0 ? years[selectedIdx - 1] : null
+  const displayYears = [prevYear, currentYear].filter(Boolean)
 
   // Per-year metrics
   const yearMetrics = years.map(year => {
@@ -1899,7 +2238,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
   // Monthly grouped bar chart data
   const monthlyData = MONTHS.map(m => {
     const entry = { name: m.label.slice(0, 3) }
-    years.forEach(year => {
+    displayYears.forEach(year => {
       const v = transactions
         .filter(t =>
           t.date?.startsWith(`${year}-${m.id}`) &&
@@ -1924,7 +2263,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
   // Cumulative spend line data
   const cumulData = MONTHS.map((m, idx) => {
     const entry = { name: m.label.slice(0, 3) }
-    years.forEach(year => {
+    displayYears.forEach(year => {
       entry[year] = MONTHS.slice(0, idx + 1).reduce((sum, mm) => {
         const v = transactions
           .filter(t =>
@@ -1945,14 +2284,14 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
     .filter(g => g.name !== 'Savings')
     .map(g => {
       const totals = {}
-      years.forEach(year => {
+      displayYears.forEach(year => {
         totals[year] = transactions
           .filter(t => t.date?.startsWith(year) && t.type === 'debit' && g.cats.includes(t.category))
           .reduce((s, t) => s + t.amount, 0)
       })
       return { name: g.name, hex: g.hex, totals }
     })
-    .filter(g => years.some(y => g.totals[y] > 0))
+    .filter(g => displayYears.some(y => g.totals[y] > 0))
     .sort((a, b) => (b.totals[currentYear] || 0) - (a.totals[currentYear] || 0))
 
   const kpiCards = [
@@ -1978,11 +2317,49 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
   const currPie = buildPie(currentYear)
   const prevPie = prevYear ? buildPie(prevYear) : []
 
-  return (
-    <div>
+  // Income breakdown cards
+  const gross    = salary?.gross ?? 0
+  const taxAmt   = gross * ((salary?.taxRate ?? 0) / 100)
+  const dedAmt   = (salary?.deductions ?? 0) * 12
+  function pctOf(val) { return gross > 0 ? (val / gross) * 100 : null }
+  function annualise(ym) {
+    if (!ym) return null
+    const scale = ym.monthsWithData > 0 ? 12 / ym.monthsWithData : 1
+    return { fixedAnn: ym.fixedYTD * scale, varAnn: ym.variableSpend * scale, savAnn: ym.savingsYTD * scale }
+  }
+  const currB = annualise(currM)
+  const prevB = annualise(prevM)
+  const compCards = gross > 0 ? [
+    { label: 'Gross Income',      color: '#0D7377', currAmt: gross,           pct: 100,                    prevPct: 100,                    hideYoY: true, note: 'Baseline — 100%' },
+    { label: 'Income Tax',        color: '#EF4444', currAmt: taxAmt,          pct: pctOf(taxAmt),          prevPct: pctOf(taxAmt),          hideYoY: true },
+    { label: 'Deductions',        color: '#F97316', currAmt: dedAmt,          pct: pctOf(dedAmt),          prevPct: pctOf(dedAmt),          hideYoY: true },
+    { label: 'Fixed Costs',       color: '#3B82F6', currAmt: currB?.fixedAnn, pct: pctOf(currB?.fixedAnn), prevPct: pctOf(prevB?.fixedAnn), invert: true  },
+    { label: 'Variable Spending', color: '#F59E0B', currAmt: currB?.varAnn,   pct: pctOf(currB?.varAnn),   prevPct: pctOf(prevB?.varAnn),   invert: true  },
+    { label: 'Savings',           color: '#14A085', currAmt: currB?.savAnn,   pct: pctOf(currB?.savAnn),   prevPct: pctOf(prevB?.savAnn),   invert: false },
+  ] : null
 
-      {/* KPI cards — full width */}
-      <div className="grid grid-cols-4 gap-4 mb-5">
+  return (
+    <div className="space-y-3">
+
+      {/* Year filter */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400 mr-1">Year</span>
+          {years.map(y => (
+            <button
+              key={y}
+              onClick={() => setSelectedYear(y)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                y === currentYear ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >{y}</button>
+          ))}
+        </div>
+        {prevYear && <p className="text-xs text-gray-400">Comparing {currentYear} vs {prevYear}</p>}
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-4 gap-4">
         {kpiCards.map(card => {
           const change  = pctChange(card.curr, card.prev)
           const isGood  = change === null ? null : (card.invert ? change < 0 : change > 0)
@@ -2005,8 +2382,59 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
         })}
       </div>
 
+      {/* Income Breakdown comparison cards */}
+      {compCards && (
+        <div>
+          <div className="flex items-end justify-between mb-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Income Breakdown</p>
+              <p className="text-xs text-gray-400 mt-0.5">Each value as % of gross income ({fmt(gross)} / yr)</p>
+            </div>
+            {prevYear && <p className="text-[10px] text-gray-400">Solid bar = {currentYear} · faded = {prevYear}</p>}
+          </div>
+          <div className="grid grid-cols-6 gap-3">
+            {compCards.map(card => {
+              const hasPct = card.pct !== null && card.pct >= 0
+              const delta  = !card.hideYoY && card.prevPct !== null && card.pct !== null ? card.pct - card.prevPct : null
+              const isGood = delta === null ? null : (card.invert ? delta < 0 : delta > 0)
+              return (
+                <div key={card.label} className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col">
+                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest mb-2 leading-tight">{card.label}</p>
+                  <p className="text-2xl font-bold tabular-nums" style={{ color: hasPct ? card.color : '#D1D5DB' }}>
+                    {hasPct ? card.pct.toFixed(1) + '%' : '—'}
+                  </p>
+                  <p className="text-[11px] text-gray-400 tabular-nums mt-0.5">
+                    {card.currAmt > 0 ? fmt(card.currAmt) : '—'}
+                  </p>
+                  <div className="mt-1.5 min-h-[16px]">
+                    {delta !== null ? (
+                      <span className={`text-[10px] font-semibold flex items-center gap-0.5 ${isGood ? 'text-[#14A085]' : 'text-red-400'}`}>
+                        <span>{delta > 0 ? '▲' : '▼'}</span>
+                        <span>{Math.abs(delta).toFixed(1)}% vs {prevYear}</span>
+                      </span>
+                    ) : card.note ? (
+                      <span className="text-[10px] text-gray-300">{card.note}</span>
+                    ) : null}
+                  </div>
+                  <div className="mt-auto pt-3">
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, hasPct ? card.pct : 0)}%`, backgroundColor: card.color }} />
+                    </div>
+                    {prevYear && !card.hideYoY && card.prevPct !== null && (
+                      <div className="h-1 bg-gray-50 rounded-full overflow-hidden mt-1 opacity-40">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, card.prevPct)}%`, backgroundColor: card.color }} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Bar chart + pie charts side by side */}
-      <div className="flex gap-5 items-start mb-5">
+      <div className="flex gap-3 items-start">
 
         {/* Monthly comparison chart */}
         <div className="flex-1 min-w-0 bg-white rounded-xl border border-gray-100 p-6">
@@ -2016,7 +2444,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
               <p className="text-xs text-gray-400 mt-0.5">Variable + fixed costs combined</p>
             </div>
             <div className="flex items-center gap-4">
-              {years.map((y, i) => (
+              {displayYears.map((y, i) => (
                 <div key={y} className="flex items-center gap-1.5 text-xs text-gray-500">
                   <span className="w-3 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: YEAR_COLORS[i] }} />
                   {y}
@@ -2027,8 +2455,8 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
           <BarChart width={620} height={260} data={monthlyData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
             <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
             <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-            <Tooltip formatter={(v, name) => [fmt(v), name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} cursor={{ fill: '#F3F4F6' }} />
-            {years.map((year, i) => (
+            <Tooltip formatter={(v, name) => [fmt(v), name]} itemSorter={item => -displayYears.indexOf(item.dataKey)} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} cursor={{ fill: '#F3F4F6' }} />
+            {displayYears.map((year, i) => (
               <Bar key={year} dataKey={year} fill={YEAR_COLORS[i]} radius={[3, 3, 0, 0]} maxBarSize={32} />
             ))}
           </BarChart>
@@ -2099,7 +2527,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
       </div>{/* end bar+pie row */}
 
       {/* Cumulative spend + delta row */}
-      <div className="flex gap-5 mb-5">
+      <div className="flex gap-3">
 
         {/* Cumulative spend */}
         <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
@@ -2108,8 +2536,8 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
           <LineChart width={460} height={200} data={cumulData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
             <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
             <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-            <Tooltip formatter={(v, name) => [fmt(v), name]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-            {years.map((year, i) => (
+            <Tooltip formatter={(v, name) => [fmt(v), name]} itemSorter={item => -displayYears.indexOf(item.dataKey)} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+            {displayYears.map((year, i) => (
               <Line key={year} type="monotone" dataKey={year} stroke={YEAR_COLORS[i]} strokeWidth={2} dot={false} />
             ))}
           </LineChart>
@@ -2144,7 +2572,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
         ) : (
           <div className="grid grid-cols-2 gap-x-10 gap-y-5">
             {catData.map(g => {
-              const maxVal = Math.max(...years.map(y => g.totals[y] || 0), 1)
+              const maxVal = Math.max(...displayYears.map(y => g.totals[y] || 0), 1)
               return (
                 <div key={g.name}>
                   <div className="flex items-center gap-2 mb-2">
@@ -2152,7 +2580,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
                     <span className="text-xs font-semibold text-gray-700">{g.name}</span>
                   </div>
                   <div className="space-y-1.5">
-                    {years.map((year, i) => (
+                    {displayYears.map((year, i) => (
                       <div key={year} className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-400 w-8 shrink-0 tabular-nums">{year}</span>
                         <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
@@ -2176,6 +2604,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries }) {
           </div>
         )}
       </div>
+
 
     </div>
   )
@@ -2505,6 +2934,7 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
   async function handleClearTransactions() {
     setClearing(true)
     await supabase.from('transactions').delete().eq('user_id', user.id)
+    localStorage.removeItem(`csvUploads_${user.id}`)
     onClearTransactions()
     setClearing(false)
     setClearConfirm(false)
@@ -2707,16 +3137,19 @@ export default function App() {
 
   const [activePage, setActivePage]         = useState('get-started')
   const [selectedMonth, setSelectedMonth]   = useState('01')
+  const [selectedYear, setSelectedYear]     = useState(APP_YEAR)
   const [dragging, setDragging]             = useState(false)
   const [toast, setToast]                   = useState(null)
-  const [salary, setSalary]                 = useState({ gross: 0, taxRate: 30, deductions: 0 })
+  const [salary, setSalary]                 = useState({ gross: 0, taxRate: 30, deductions: 0, extraIncome: 0 })
   const [categoryMemory, setCategoryMemory] = useState({})
   const [transactions, setTransactions]     = useState([])
   const [fixedCosts, setFixedCosts]         = useState([])
   const [savingsEntries, setSavingsEntries] = useState([])
+  const [customTags, setCustomTags]         = useState([])
   const [dedupKeyCache, setDedupKeyCache]   = useState(new Set())
   const [csvUploads, setCsvUploads]         = useState([])
   const [uploadHistoryOpen, setUploadHistoryOpen] = useState(true)
+  const [fuzzyPrompt, setFuzzyPrompt]       = useState(null)
   const [dashVariableOpen, setDashVariableOpen] = useState(true)
   const [dashFixedOpen, setDashFixedOpen]       = useState(true)
   const [dashSavingsOpen, setDashSavingsOpen]   = useState(true)
@@ -2746,11 +3179,12 @@ export default function App() {
     async function loadData() {
       setLoading(true)
       try {
-        const [txnRes, memRes, fixedRes, salaryRes] = await Promise.all([
+        const [txnRes, memRes, fixedRes, salaryRes, tagsRes] = await Promise.all([
           supabase.from('transactions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
           supabase.from('category_memory').select('*').eq('user_id', user.id),
           supabase.from('fixed_costs').select('*').eq('user_id', user.id),
           supabase.from('salary_settings').select('*').eq('user_id', user.id).limit(1),
+          supabase.from('custom_tags').select('*').eq('user_id', user.id),
         ])
         const storedUploads = JSON.parse(localStorage.getItem(`csvUploads_${user.id}`) || '[]')
         setCsvUploads(storedUploads)
@@ -2785,9 +3219,13 @@ export default function App() {
         }
 
         if (fixedRes.data) {
-          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category, frequency: r.frequency ?? 'monthly' }))
-          setFixedCosts(rows.filter(r => !isSaving(r.category)))
-          setSavingsEntries(rows.filter(r => isSaving(r.category)))
+          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category, frequency: r.frequency ?? 'monthly', isSavings: r.is_savings ?? isSaving(r.category) }))
+          setFixedCosts(rows.filter(r => !r.isSavings))
+          setSavingsEntries(rows.filter(r => r.isSavings))
+        }
+
+        if (tagsRes.data) {
+          setCustomTags(tagsRes.data.map(r => ({ id: r.id, category: r.category, tag: r.tag })))
         }
 
         const salaryRow = salaryRes.data?.[0]
@@ -2796,6 +3234,7 @@ export default function App() {
             gross: salaryRow.gross_salary ?? 0,
             taxRate: salaryRow.tax_rate ?? 30,
             deductions: salaryRow.monthly_deductions ?? 0,
+            extraIncome: salaryRow.extra_income ?? 0,
           })
         }
 
@@ -2813,10 +3252,11 @@ export default function App() {
   async function addFixedCost(cost) {
     const freq = cost.frequency ?? 'monthly'
     const base = { user_id: user.id, name: cost.name, amount: cost.amount, category: cost.category }
-    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single()
+    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: false }).select().single()
+    if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
     if (!error && data) {
-      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq }])
+      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: false }])
     }
   }
 
@@ -2837,10 +3277,11 @@ export default function App() {
   async function addSavingsEntry(entry) {
     const freq = entry.frequency ?? 'monthly'
     const base = { user_id: user.id, name: entry.name, amount: entry.amount, category: entry.category }
-    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single()
+    let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: true }).select().single()
+    if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
     if (!error && data) {
-      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq }])
+      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: true }])
     }
   }
 
@@ -2864,15 +3305,15 @@ export default function App() {
 
     const descKey = t.description.toUpperCase().trim()
 
-    // Find all other untagged transactions with the same description
+    // Find all other untagged transactions with the same description (exact match)
     const similar = transactions.filter(
       tx => tx.id !== id && !tx.category && tx.description.toUpperCase().trim() === descKey
     )
+    const exactIds = new Set([id, ...similar.map(tx => tx.id)])
 
-    // Apply category to the target + all matching untagged in one state update
-    const toUpdate = new Set([id, ...similar.map(tx => tx.id)])
+    // Apply category to the target + all exact-matching untagged in one state update
     setTransactions(prev => prev.map(tx =>
-      toUpdate.has(tx.id) ? { ...tx, category, fromMemory: tx.id !== id } : tx
+      exactIds.has(tx.id) ? { ...tx, category, fromMemory: tx.id !== id } : tx
     ))
 
     // Supabase: update the manually tagged row
@@ -2891,6 +3332,18 @@ export default function App() {
       setCategory._timer = setTimeout(() => setToast(null), 4000)
     }
 
+    // Find fuzzy-similar untagged transactions (not exact matches)
+    if (category) {
+      const fuzzy = transactions.filter(tx =>
+        !exactIds.has(tx.id) &&
+        !tx.category &&
+        strSimilarity(tx.description.toUpperCase().trim(), descKey) >= 0.75
+      )
+      if (fuzzy.length > 0) {
+        setFuzzyPrompt({ category, matches: fuzzy })
+      }
+    }
+
     // Persist to category_memory using full description as key
     if (category) {
       setCategoryMemory(prev => ({ ...prev, [descKey]: category }))
@@ -2899,6 +3352,65 @@ export default function App() {
         { onConflict: 'user_id,key' }
       )
     }
+  }
+
+  function handleFuzzyAccept() {
+    if (!fuzzyPrompt) return
+    const { category, matches } = fuzzyPrompt
+    const ids = matches.map(tx => tx.id)
+    setTransactions(prev => prev.map(tx =>
+      ids.includes(tx.id) ? { ...tx, category, fromMemory: true } : tx
+    ))
+    supabase.from('transactions')
+      .update({ category, from_memory: true })
+      .in('id', ids)
+      .eq('user_id', user.id)
+      .then()
+    setFuzzyPrompt(null)
+    clearTimeout(setCategory._timer)
+    setToast({ msg: `Tagged ${matches.length} transaction${matches.length !== 1 ? 's' : ''} as "${category}"` })
+    setCategory._timer = setTimeout(() => setToast(null), 4000)
+  }
+
+  function handleFuzzyDismiss() {
+    setFuzzyPrompt(null)
+  }
+
+  async function handleDeleteUpload(upload) {
+    const ids = upload.txnIds || []
+    if (ids.length > 0) {
+      await supabase.from('transactions').delete().in('id', ids).eq('user_id', user.id)
+      setTransactions(prev => prev.filter(t => !ids.includes(t.id)))
+      // Remove deleted transaction dedup keys so they can be re-imported if needed
+      setDedupKeyCache(prev => {
+        const next = new Set(prev)
+        transactions.filter(t => ids.includes(t.id)).forEach(t => next.delete(dedupKey(t)))
+        return next
+      })
+    }
+    setCsvUploads(prev => {
+      const next = prev.filter(x => x.id !== upload.id)
+      localStorage.setItem(`csvUploads_${user.id}`, JSON.stringify(next))
+      return next
+    })
+  }
+
+  async function addCustomTag(category, tag) {
+    const existing = customTags.find(t => t.category === category)
+    if (existing) {
+      const { data } = await supabase.from('custom_tags').update({ tag }).eq('id', existing.id).eq('user_id', user.id).select().single()
+      if (data) setCustomTags(prev => prev.map(t => t.id === data.id ? { ...t, tag: data.tag } : t))
+    } else {
+      const { data } = await supabase.from('custom_tags').insert({ user_id: user.id, category, tag }).select().single()
+      if (data) setCustomTags(prev => [...prev, { id: data.id, category: data.category, tag: data.tag }])
+    }
+  }
+
+  async function removeCustomTag(category) {
+    const existing = customTags.find(t => t.category === category)
+    if (!existing) return
+    await supabase.from('custom_tags').delete().eq('id', existing.id).eq('user_id', user.id)
+    setCustomTags(prev => prev.filter(t => t.category !== category))
   }
 
   function parseCSV(text) {
@@ -3049,6 +3561,14 @@ export default function App() {
         fromMemory: r.from_memory ?? false,
       }))
 
+      // Backfill txnIds into the upload record so cascading delete knows which rows to remove
+      const insertedIds = insertedTxns.map(t => t.id)
+      setCsvUploads(prev => {
+        const next = prev.map(u => u.id === newUpload.id ? { ...u, txnIds: insertedIds } : u)
+        localStorage.setItem(`csvUploads_${user.id}`, JSON.stringify(next))
+        return next
+      })
+
       // Update cache: merge DB-discovered existing keys + newly inserted keys
       const nextCache = new Set(dedupKeyCache)
       dbExisting.forEach(r =>
@@ -3083,7 +3603,8 @@ export default function App() {
     setSalary(next)
     clearTimeout(salaryTimerRef.current)
     salaryTimerRef.current = setTimeout(async () => {
-      const payload = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions }
+      const payload     = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0 }
+      const payloadSafe = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions }
 
       const { data: existing, error: selectErr } = await supabase
         .from('salary_settings').select('id').eq('user_id', user.id).limit(1)
@@ -3091,13 +3612,11 @@ export default function App() {
 
       let error
       if (existing?.length) {
-        const { error: e } = await supabase
-          .from('salary_settings').update(payload).eq('id', existing[0].id)
-        error = e
+        ;({ error } = await supabase.from('salary_settings').update(payload).eq('id', existing[0].id))
+        if (error) ;({ error } = await supabase.from('salary_settings').update(payloadSafe).eq('id', existing[0].id))
       } else {
-        const { error: e } = await supabase
-          .from('salary_settings').insert({ user_id: user.id, ...payload })
-        error = e
+        ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...payload }))
+        if (error) ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...payloadSafe }))
       }
       if (error) console.error('[budgr] salary save failed:', error)
     }, 600)
@@ -3107,10 +3626,11 @@ export default function App() {
     ? salary.gross * (1 - salary.taxRate / 100) - salary.deductions * 12
     : 0
   const selectedMonthLabel = MONTHS.find(m => m.id === selectedMonth)?.label || ''
+  const availableYears     = [...new Set(transactions.map(t => t.date?.slice(0, 4)).filter(Boolean))].sort()
 
   const PAGE_TITLES = {
     'get-started': 'Get Started',
-    dashboard:    `${selectedMonthLabel} 2026 — Transactions`,
+    dashboard:    `${selectedMonthLabel} ${selectedYear} — Transactions`,
     transactions: 'All Transactions',
     salary:       'Salary',
     fixed:        'Fixed Costs',
@@ -3196,7 +3716,20 @@ export default function App() {
         {/* Top bar */}
         <header className="bg-white border-b border-gray-200 px-6 flex items-center justify-between h-14 shrink-0">
           <h1 className="text-sm font-medium text-gray-800">{PAGE_TITLES[activePage] || ''}</h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {availableYears.length > 1 && activePage !== 'year-comparison' && (
+              <div className="flex items-center gap-1.5">
+                {availableYears.map(y => (
+                  <button
+                    key={y}
+                    onClick={() => setSelectedYear(y)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                      y === selectedYear ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >{y}</button>
+                ))}
+              </div>
+            )}
             <label className="cursor-pointer bg-white border border-gray-200 text-gray-600 text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
               Import CSV
               <input type="file" accept=".csv" className="hidden" onChange={handleFileInput} />
@@ -3249,6 +3782,7 @@ export default function App() {
             <MonthlyDashboard
               txns={transactions}
               selectedMonth={selectedMonth}
+              selectedYear={selectedYear}
               setCategory={setCategory}
               salary={salary}
               fixedCosts={fixedCosts}
@@ -3375,6 +3909,17 @@ export default function App() {
                                   +{newCount} new
                                 </span>
                               )}
+                              <button
+                                onClick={() => {
+                                  const txnCount = (u.txnIds || []).length
+                                  const msg = txnCount > 0
+                                    ? `Delete "${u.filename}" and remove its ${txnCount} transaction${txnCount !== 1 ? 's' : ''} from the database?`
+                                    : `Remove "${u.filename}" from upload history?`
+                                  if (window.confirm(msg)) handleDeleteUpload(u)
+                                }}
+                                className="text-gray-300 hover:text-red-400 transition-colors text-sm leading-none shrink-0 ml-1"
+                                title="Delete upload and its transactions"
+                              >✕</button>
                             </div>
                           )
                         })}
@@ -3384,7 +3929,14 @@ export default function App() {
                 )}
               </div>
 
-              <TransactionView txns={transactions} setCategory={setCategory} />
+              <TransactionView
+                txns={transactions}
+                selectedYear={selectedYear}
+                setCategory={setCategory}
+                fuzzyPrompt={fuzzyPrompt}
+                onFuzzyAccept={handleFuzzyAccept}
+                onFuzzyDismiss={handleFuzzyDismiss}
+              />
             </div>
           )}
 
@@ -3394,6 +3946,7 @@ export default function App() {
               onSalaryChange={handleSalaryChange}
               transactions={transactions}
               selectedMonth={selectedMonth}
+              selectedYear={selectedYear}
               fixedCosts={fixedCosts}
             />
           )}
@@ -3403,12 +3956,17 @@ export default function App() {
               transactions={transactions}
               fixedCosts={fixedCosts}
               savingsEntries={savingsEntries}
+              selectedYear={selectedYear}
+              customTags={customTags}
+              onTagCategory={addCustomTag}
+              onUntagCategory={removeCustomTag}
             />
           )}
 
           {activePage === 'fixed' && (
             <FixedCostsPage
               fixedCosts={fixedCosts}
+              selectedYear={selectedYear}
               onAdd={addFixedCost}
               onUpdate={updateFixedCost}
               onDelete={deleteFixedCost}
@@ -3418,6 +3976,7 @@ export default function App() {
           {activePage === 'savings' && (
             <SavingsPage
               savingsEntries={savingsEntries}
+              selectedYear={selectedYear}
               onAdd={addSavingsEntry}
               onUpdate={updateSavingsEntry}
               onDelete={deleteSavingsEntry}
@@ -3430,6 +3989,7 @@ export default function App() {
               salary={salary}
               fixedCosts={fixedCosts}
               savingsEntries={savingsEntries}
+              selectedYear={selectedYear}
             />
           )}
 
@@ -3438,6 +3998,7 @@ export default function App() {
               transactions={transactions}
               fixedCosts={fixedCosts}
               savingsEntries={savingsEntries}
+              salary={salary}
             />
           )}
 
@@ -3445,7 +4006,7 @@ export default function App() {
             <SettingsPage
               user={user}
               transactions={transactions}
-              onClearTransactions={() => { setTransactions([]); setDedupKeyCache(new Set()) }}
+              onClearTransactions={() => { setTransactions([]); setDedupKeyCache(new Set()); setCsvUploads([]) }}
             />
           )}
 
