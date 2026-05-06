@@ -2019,79 +2019,31 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
           <span className="text-sm font-bold text-gray-900 tabular-nums">{incomeToDate > 0 ? fmt(incomeToDate) : '—'}</span>
         </div>
 
-        {/* Fixed Costs */}
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1">Fixed Costs</p>
-        {fixedCostItems.length > 0
-          ? fixedCostItems.map(c => (
-              <div key={c.id} className="flex justify-between items-center py-2 border-b border-gray-50">
-                <span className="text-sm text-gray-600">{c.name}</span>
-                <span className="text-sm font-medium text-gray-800 tabular-nums">{monthsWithData > 0 ? fmt(monthlyRate(c) * monthsWithData) : '—'}</span>
-              </div>
-            ))
-          : <div className="py-2"><span className="text-sm italic text-gray-400">No fixed costs entered</span></div>
-        }
-        <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
-          <span className="text-sm font-semibold text-gray-700">Fixed Subtotal</span>
-          <span className="text-sm font-bold text-gray-900 tabular-nums">{fixedYTD > 0 ? fmt(fixedYTD) : '—'}</span>
+        {/* Fixed Costs — single total line */}
+        <div className="flex justify-between items-center py-2 border-b border-gray-50">
+          <span className="text-sm text-gray-600">Fixed Costs</span>
+          <span className="text-sm font-medium text-gray-800 tabular-nums">{fixedYTD > 0 ? fmt(fixedYTD) : '—'}</span>
         </div>
 
-        {/* Variable Spending — by group */}
-        {varGroups.length === 0 && customVarEntries.length === 0 && (
-          <>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1">Variable Spending</p>
-            <div className="py-2"><span className="text-sm italic text-gray-400">No transactions yet</span></div>
-            <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
-              <span className="text-sm font-semibold text-gray-700">Variable Subtotal</span>
-              <span className="text-sm font-bold text-gray-900 tabular-nums">—</span>
+        {/* Variable Spending — one line per group */}
+        {varGroups.map(g => {
+          const groupTotal = g.entries.reduce((s, e) => s + e.amt, 0)
+          return (
+            <div key={g.name} className="flex items-center py-2 border-b border-gray-50">
+              <span className="w-2 h-2 rounded-full shrink-0 mr-2.5" style={{ backgroundColor: g.hex }} />
+              <span className="text-sm text-gray-600 flex-1">{g.name}</span>
+              <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(groupTotal)}</span>
             </div>
-          </>
-        )}
-        {varGroups.map(g => (
-          <div key={g.name}>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1 pt-0">{g.name}</p>
-            {g.entries.map(({ cat, amt }) => (
-              <div key={cat} className="flex items-center py-2 border-b border-gray-50">
-                <span className="w-2 h-2 rounded-full shrink-0 mr-2.5" style={{ backgroundColor: g.hex }} />
-                <span className="text-sm text-gray-600 flex-1">{cat}</span>
-                <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(amt)}</span>
-              </div>
-            ))}
-          </div>
-        ))}
+          )
+        })}
         {customVarEntries.length > 0 && (
-          <>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1 pt-0">Custom</p>
-            {customVarEntries.map(({ cat, amt }) => (
-              <div key={cat} className="flex justify-between items-center py-2 border-b border-gray-50">
-                <span className="text-sm text-gray-600">{cat}</span>
-                <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(amt)}</span>
-              </div>
-            ))}
-          </>
-        )}
-        {(varGroups.length > 0 || customVarEntries.length > 0) && (
-          <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
-            <span className="text-sm font-semibold text-gray-700">Variable Subtotal</span>
-            <span className="text-sm font-bold text-gray-900 tabular-nums">{txnSpent > 0 ? fmt(txnSpent) : '—'}</span>
+          <div className="flex justify-between items-center py-2 border-b border-gray-50">
+            <span className="text-sm text-gray-600">Other</span>
+            <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(customVarEntries.reduce((s, e) => s + e.amt, 0))}</span>
           </div>
         )}
-
-        {/* Savings */}
-        {savingsCatEntries.length > 0 && (
-          <>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1 pt-0">Savings</p>
-            {savingsCatEntries.map(([cat, amt]) => (
-              <div key={cat} className="flex items-center py-2 border-b border-gray-50">
-                <span className="w-2 h-2 rounded-full shrink-0 mr-2.5" style={{ backgroundColor: '#14A085' }} />
-                <span className="text-sm text-gray-600 flex-1">{cat}</span>
-                <span className="text-sm font-medium text-[#0D7377] tabular-nums">{fmt(amt)}</span>
-              </div>
-            ))}
-            <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
-              <span className="text-sm font-semibold text-gray-700">Savings Subtotal</span>
-              <span className="text-sm font-bold text-[#0D7377] tabular-nums">{fmt(allSavingsYTD)}</span>
-            </div>
-          </>
+        {varGroups.length === 0 && customVarEntries.length === 0 && (
+          <div className="py-2 border-b border-gray-50"><span className="text-sm italic text-gray-400">No variable transactions yet</span></div>
         )}
 
         {/* Totals */}
