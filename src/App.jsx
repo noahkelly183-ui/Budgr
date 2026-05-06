@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
+import EmptyState from './components/EmptyState.jsx'
+import { TrendingUp, TrendingDown, PiggyBank, Percent, CalendarDays, BarChart3, Wallet, ArrowUpRight } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie, ResponsiveContainer } from 'recharts'
 
 const CATEGORIES = [
@@ -309,7 +311,7 @@ function CategoryCombobox({ value, onChange }) {
 
 // ─── TransactionView (Transactions page — grouped by month with filter) ───────
 
-function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzyAccept, onFuzzyDismiss }) {
+function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzyAccept, onFuzzyDismiss, onImport }) {
   const [filter, setFilter] = useState('all')
 
   const yearTxns      = selectedYear ? txns.filter(t => t.date?.startsWith(selectedYear)) : txns
@@ -433,13 +435,21 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
           </div>
 
           {groups.length === 0 ? (
-            <div className="bg-white border border-gray-100 border-t-0 rounded-b-xl px-4 py-8 text-center text-gray-400 text-xs">
-              {filter === 'untagged'
-                ? 'All transactions are tagged!'
-                : filter === 'manual'
-                  ? 'No manually tagged transactions yet'
-                  : 'No transactions yet — import a CSV to get started'}
-            </div>
+            filter === 'all' ? (
+              <div className="border border-gray-100 border-t-0 rounded-b-xl overflow-hidden">
+                <EmptyState
+                  icon="🏦"
+                  title="No transactions yet"
+                  description="Import a CSV from your bank to start tracking your income and spending."
+                  actionLabel="Import CSV"
+                  onAction={onImport}
+                />
+              </div>
+            ) : (
+              <div className="bg-white border border-gray-100 border-t-0 rounded-b-xl px-4 py-8 text-center text-gray-400 text-xs">
+                {filter === 'untagged' ? 'All transactions are tagged!' : 'No manually tagged transactions yet'}
+              </div>
+            )
           ) : groups.map((group, gi) => {
             const groupDebits = group.txns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
             const groupSpend  = groupDebits.reduce((s, t) => s + t.amount, 0)
@@ -498,7 +508,7 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
 
 const CATS_SET = new Set(CATEGORIES)
 
-function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear, customTags, onTagCategory, onUntagCategory }) {
+function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear, customTags, onTagCategory, onUntagCategory, onNavigate }) {
   const [editingTag, setEditingTag] = useState(null)
   const [tagInput, setTagInput]     = useState('')
 
@@ -603,6 +613,20 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
       accent: true,
     },
   ]
+
+  const hasAnyData = spendingGroups.length > 0 || customEntries.length > 0 || fixedCostItems.length > 0 || savingsCatEntries.length > 0
+
+  if (!hasAnyData) {
+    return (
+      <EmptyState
+        icon="🏷️"
+        title="No categories yet"
+        description="Import transactions to see your spending broken down by category, or add fixed costs to start tracking recurring expenses."
+        actionLabel="Import Transactions"
+        onAction={() => onNavigate('transactions')}
+      />
+    )
+  }
 
   return (
     <div>
@@ -738,6 +762,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
 // ─── FixedCostsPage ───────────────────────────────────────────────────────────
 
 function FixedCostsPage({ fixedCosts, selectedYear, onAdd, onUpdate, onDelete }) {
+  const nameInputRef = useRef(null)
   const [name, setName]               = useState('')
   const [amount, setAmount]           = useState('')
   const [category, setCategory]       = useState('')
@@ -795,7 +820,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, onAdd, onUpdate, onDelete })
         <div className="flex gap-3 items-end flex-wrap">
           <div className="flex-1 min-w-40">
             <label className="block text-xs text-gray-500 mb-1.5">Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)}
+            <input ref={nameInputRef} type="text" value={name} onChange={e => setName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. Rent" className={addInput} />
           </div>
           <div className="w-36">
@@ -830,17 +855,20 @@ function FixedCostsPage({ fixedCosts, selectedYear, onAdd, onUpdate, onDelete })
             )}
           </div>
           <button onClick={handleAdd} disabled={!name.trim() || !amount || !addCat}
-            className="px-5 py-2 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            className="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
         </div>
       </div>
 
       {fixedCosts.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-          <p className="text-sm text-gray-400">No fixed costs yet — add your first above</p>
-          <p className="text-xs text-gray-300 mt-1">Fixed costs appear on your monthly dashboard and annual totals</p>
-        </div>
+        <EmptyState
+          icon="📋"
+          title="No fixed costs yet"
+          description="Add recurring expenses like rent, subscriptions, or insurance to track them across your monthly and annual summaries."
+          actionLabel="Add a fixed cost"
+          onAction={() => nameInputRef.current?.focus()}
+        />
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center gap-3">
@@ -1065,7 +1093,7 @@ function SavingsPage({ savingsEntries, selectedYear, onAdd, onUpdate, onDelete }
             )}
           </div>
           <button onClick={handleAdd} disabled={!name.trim() || !amount || !addCat}
-            className="px-5 py-2 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            className="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
         </div>
@@ -1205,6 +1233,55 @@ function SavingsPage({ savingsEntries, selectedYear, onAdd, onUpdate, onDelete }
   )
 }
 
+// ─── Monthly performance score ────────────────────────────────────────────────
+
+function calcMonthlyScore({ savingsRate, txnSpent, monthlyNet, fixedMonthlyTotal, totalSpent, untagged, totalDebits }) {
+  if (monthlyNet <= 0) return null
+
+  // Savings Rate: 0–40 pts
+  const srScore = savingsRate === null || savingsRate <= 0 ? 0 : Math.min((savingsRate / 30) * 40, 40)
+
+  // Expense Ratio: 0–20 pts — variable spend vs net income
+  let erScore = 10
+  if (monthlyNet > 0) {
+    const ratio = txnSpent / monthlyNet
+    erScore = ratio >= 0.8 ? 0 : ratio >= 0.7 ? 3 : ratio >= 0.6 ? 8 : ratio >= 0.5 ? 13 : ratio >= 0.4 ? 17 : 20
+  }
+
+  // Cost Balance: 0–30 pts — fixed proportion of total spend (ideal 30–60%)
+  let fvScore = 15
+  if (totalSpent > 0) {
+    const fRatio = fixedMonthlyTotal / totalSpent
+    fvScore = fRatio >= 0.3 && fRatio <= 0.6 ? 30 : fRatio >= 0.2 && fRatio <= 0.7 ? 20 : 10
+  }
+
+  // Clarity: 0–10 pts — how many debits are categorised
+  const clarityScore = totalDebits === 0 ? 10 : Math.round(((totalDebits - untagged) / totalDebits) * 10)
+
+  return {
+    score: Math.round(srScore + erScore + fvScore + clarityScore),
+    components: [
+      { label: 'Savings Rate',   value: Math.round(srScore),    max: 40 },
+      { label: 'Expense Ratio',  value: Math.round(erScore),    max: 20 },
+      { label: 'Cost Balance',   value: Math.round(fvScore),    max: 30 },
+      { label: 'Clarity',        value: Math.round(clarityScore), max: 10 },
+    ],
+  }
+}
+
+function getMonthlyInsight(score, { savingsRate }) {
+  if (score >= 85) return { headline: 'Excellent month', sub: 'Strong savings rate and well-balanced costs — keep it up' }
+  if (score >= 70) return { headline: 'Solid performance', sub: 'Good margin this month — look for small cuts to push higher' }
+  if (score >= 55) {
+    if (savingsRate !== null && savingsRate < 10)
+      return { headline: 'Spending is tight this month', sub: 'Low savings rate — review variable spending for quick wins' }
+    return { headline: 'Room to improve', sub: 'Decent month overall — categorise transactions for a fuller picture' }
+  }
+  if (score >= 40) return { headline: 'Breaking even', sub: 'Costs are close to income — trim discretionary spending to build a buffer' }
+  if (score >= 20) return { headline: 'Costs outpacing income', sub: 'High expense ratio this month — review fixed and variable costs' }
+  return { headline: 'Month needs attention', sub: 'Add salary info and categorise transactions to get your score' }
+}
+
 // ─── MonthlyDashboard ─────────────────────────────────────────────────────────
 
 function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, salary, fixedCosts, savingsEntries, variableOpen, setVariableOpen, fixedOpen, setFixedOpen, savingsOpen, setSavingsOpen }) {
@@ -1236,44 +1313,119 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
     return acc
   }, {})
 
-  return (
-    <div className="flex gap-5">
+  const totalDebits  = debits.length + savingsTxns.length
+  const monthlyScore = calcMonthlyScore({ savingsRate, txnSpent, monthlyNet, fixedMonthlyTotal, totalSpent, untagged, totalDebits })
+  const scoreColor   = monthlyScore === null ? '#6B7280'
+    : monthlyScore.score >= 85 ? '#14A085'
+    : monthlyScore.score >= 70 ? '#0D7377'
+    : monthlyScore.score >= 55 ? '#3B82F6'
+    : monthlyScore.score >= 40 ? '#F59E0B'
+    : monthlyScore.score >= 20 ? '#F97316'
+    : '#EF4444'
+  const scoreGrade = monthlyScore === null ? null
+    : monthlyScore.score >= 85 ? 'A+' : monthlyScore.score >= 70 ? 'A' : monthlyScore.score >= 55 ? 'B'
+    : monthlyScore.score >= 40 ? 'C' : monthlyScore.score >= 20 ? 'D' : 'F'
+  const monthlyInsight = monthlyScore !== null ? getMonthlyInsight(monthlyScore.score, { savingsRate }) : null
 
-      {/* Left panel */}
-      <div className="flex-1 min-w-0">
+  return (
+    <div>
+
+      {/* Performance Grade card — full width */}
+        {monthlyScore !== null ? (
+          <div className="rounded-2xl p-6 mb-5 border border-white/10 overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #0F3460 0%, #1A1A2E 50%, #0D2137 100%)' }}>
+            <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at 15% 50%, ${scoreColor}18 0%, transparent 60%)` }} />
+            <div className="relative flex items-center gap-8">
+              <div className="shrink-0 w-56">
+                <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em] mb-4">Monthly Score</p>
+                <div className="flex items-end gap-2 mb-3">
+                  <span className="text-[72px] font-black leading-none tabular-nums" style={{ color: scoreColor }}>
+                    {monthlyScore.score}
+                  </span>
+                  <div className="flex flex-col gap-1 mb-2">
+                    <span className="text-sm font-semibold text-white/25 leading-none">/100</span>
+                    <span className="px-2 py-0.5 rounded-md text-xs font-black leading-none" style={{ backgroundColor: scoreColor + '28', color: scoreColor }}>
+                      {scoreGrade}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-sm font-semibold text-white leading-snug">{monthlyInsight.headline}</p>
+                <p className="text-xs text-white/40 mt-1 leading-snug">{monthlyInsight.sub}</p>
+              </div>
+              <div className="w-px bg-white/10 self-stretch" />
+              <div className="flex-1 grid grid-cols-2 gap-x-10 gap-y-5">
+                {monthlyScore.components.map(c => {
+                  const pct = (c.value / c.max) * 100
+                  return (
+                    <div key={c.label}>
+                      <div className="flex justify-between items-baseline mb-2">
+                        <span className="text-[11px] font-medium text-white/45">{c.label}</span>
+                        <span className="text-xs font-bold tabular-nums" style={{ color: scoreColor }}>
+                          {c.value}<span className="text-white/20 font-normal">/{c.max}</span>
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-white/[0.08]">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: scoreColor, opacity: 0.85 }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl p-6 mb-5 border border-white/10 flex items-center gap-4" style={{ background: 'linear-gradient(135deg, #0F3460 0%, #1A1A2E 100%)' }}>
+            <div>
+              <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em] mb-2">Monthly Score</p>
+              <p className="text-2xl font-black text-white/20">—</p>
+            </div>
+            <p className="text-xs text-white/30 ml-2">Add salary details to generate your score</p>
+          </div>
+        )}
 
         {/* KPI cards */}
-        <div className="grid grid-cols-4 gap-4 mb-5">
+        <div className="grid grid-cols-4 gap-6 mb-6">
 
-          <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Net Income</p>
-            <p className={`text-2xl font-bold tabular-nums ${monthlyNet > 0 ? 'text-white' : 'text-white/20'}`}>
+          <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Net Income</p>
+              <TrendingUp className="w-4 h-4 text-white/20" />
+            </div>
+            <p className={`text-3xl font-bold tabular-nums ${monthlyNet > 0 ? 'text-teal-400' : 'text-white/20'}`}>
               {monthlyNet > 0 ? fmt(monthlyNet) : '—'}
             </p>
             <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: '#0D7377' }} />
           </div>
 
-          <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Total Expenses</p>
-            <p className={`text-2xl font-bold tabular-nums ${totalSpent > 0 ? 'text-white' : 'text-white/20'}`}>
+          <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Total Expenses</p>
+              <TrendingDown className="w-4 h-4 text-white/20" />
+            </div>
+            <p className={`text-3xl font-bold tabular-nums ${totalSpent > 0 ? 'text-red-400' : 'text-white/20'}`}>
               {totalSpent > 0 ? fmt(totalSpent) : '—'}
             </p>
             <div className="mt-3 h-[3px] w-7 rounded-full bg-red-400/70" />
           </div>
 
-          <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Savings</p>
-            <p className={`text-2xl font-bold tabular-nums ${totalSavings > 0 ? 'text-white' : 'text-white/20'}`}>
+          <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings</p>
+              <PiggyBank className="w-4 h-4 text-white/20" />
+            </div>
+            <p className={`text-3xl font-bold tabular-nums ${totalSavings > 0 ? 'text-teal-400' : 'text-white/20'}`}>
               {totalSavings > 0 ? fmt(totalSavings) : '—'}
             </p>
             <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: totalSavings > 0 ? '#14A085' : '#374151' }} />
           </div>
 
-          <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Savings Rate</p>
-            <p className={`text-2xl font-bold tabular-nums ${
+          <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings Rate</p>
+              <Percent className="w-4 h-4 text-white/20" />
+            </div>
+            <p className={`text-3xl font-bold tabular-nums ${
               savingsRate === null ? 'text-white/20'
-              : savingsRate >= 20 ? 'text-[#14A085]'
+              : savingsRate >= 20 ? 'text-teal-400'
               : savingsRate >= 10 ? 'text-amber-400'
               : 'text-red-400'
             }`}>
@@ -1285,12 +1437,11 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
 
         </div>
 
-        {/* Income statement card */}
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-5">
+      {/* Income statement + Breakdown side by side */}
+      <div className="flex gap-6 items-start mb-6">
 
-          <div className="px-5 py-2.5 bg-gray-50/80 border-b border-gray-100">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Monthly Summary</span>
-          </div>
+        {/* Income statement card */}
+        <div className="flex-1 bg-white rounded-xl border border-gray-100 overflow-hidden">
 
           <div className="flex items-center justify-between px-5 py-3.5" style={{ backgroundColor: '#F0FDF4' }}>
             <span className="text-sm text-gray-600">Net Income</span>
@@ -1326,7 +1477,6 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
             </div>
           ))}
 
-
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
             <span className="text-sm font-semibold text-gray-700">Total Savings</span>
             <span className={`text-sm font-bold tabular-nums ${totalSavings > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
@@ -1348,15 +1498,66 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
 
         </div>
 
-        {untagged > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4 text-xs text-amber-700 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-            {untagged} transaction{untagged > 1 ? 's' : ''} still need a category — click to classify
-          </div>
-        )}
+        {/* Spending breakdown card — alongside income statement */}
+        <div className="w-64 shrink-0 bg-white rounded-xl border border-gray-100 p-6">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Spending Breakdown</p>
 
-        {/* Transaction table */}
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="space-y-3">
+            {CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(group => {
+              const txnTotal   = group.cats.reduce((s, cat) =>
+                s + debits.filter(t => t.category === cat).reduce((ss, t) => ss + t.amount, 0), 0
+              )
+              const fixedTotal = fixedCosts
+                .filter(c => group.cats.includes(c.category))
+                .reduce((s, c) => s + monthlyRate(c), 0)
+              const groupTotal = txnTotal + fixedTotal
+              if (groupTotal === 0) return null
+              const pct = totalSpent > 0 ? (groupTotal / totalSpent) * 100 : 0
+              return (
+                <div key={group.name}>
+                  <div className="flex justify-between items-center text-xs mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.hex }} />
+                      <span className="text-gray-600">{group.name}</span>
+                    </div>
+                    <span className="font-medium text-gray-800 tabular-nums">{fmt(groupTotal)}</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: group.hex }} />
+                  </div>
+                </div>
+              )
+            })}
+            {debits.length === 0 && fixedCosts.length === 0 && (
+              <p className="text-xs text-gray-300 text-center py-2">No spending this month</p>
+            )}
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5">
+            <div className="flex justify-between text-xs font-semibold pt-1 border-t border-gray-100">
+              <span className="text-gray-700">Total</span>
+              <span className="text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
+            </div>
+            {totalSavings > 0 && (
+              <div className="flex justify-between text-xs font-semibold text-teal-600">
+                <span>Savings</span>
+                <span className="tabular-nums">{fmt(totalSavings)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>{/* end income statement + breakdown row */}
+
+      {untagged > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4 text-xs text-amber-700 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+          {untagged} transaction{untagged > 1 ? 's' : ''} still need a category — click to classify
+        </div>
+      )}
+
+      {/* Transaction table — full width */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
 
           <button onClick={() => setVariableOpen(o => !o)} className="w-full px-4 py-2.5 bg-gray-50/80 flex items-center justify-between border-b border-gray-100 text-left">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Variable Spending</span>
@@ -1474,69 +1675,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
             </>
           )}
         </div>
-      </div>
 
-      {/* Right panel */}
-      <div className="w-72 shrink-0 space-y-4">
-
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Breakdown</p>
-
-          <div className="space-y-3">
-            {CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(group => {
-              const txnTotal   = group.cats.reduce((s, cat) =>
-                s + debits.filter(t => t.category === cat).reduce((ss, t) => ss + t.amount, 0), 0
-              )
-              const fixedTotal = fixedCosts
-                .filter(c => group.cats.includes(c.category))
-                .reduce((s, c) => s + monthlyRate(c), 0)
-              const groupTotal = txnTotal + fixedTotal
-              if (groupTotal === 0) return null
-              const pct = totalSpent > 0 ? (groupTotal / totalSpent) * 100 : 0
-              return (
-                <div key={group.name}>
-                  <div className="flex justify-between items-center text-xs mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.hex }} />
-                      <span className="text-gray-600">{group.name}</span>
-                    </div>
-                    <span className="font-medium text-gray-800 tabular-nums">{fmt(groupTotal)}</span>
-                  </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: group.hex }} />
-                  </div>
-                </div>
-              )
-            })}
-            {debits.length === 0 && fixedCosts.length === 0 && (
-              <p className="text-xs text-gray-300 text-center py-2">No spending this month</p>
-            )}
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="text-gray-500">Fixed costs</span>
-              <span className="font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-gray-500">Variable</span>
-              <span className="font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
-            </div>
-            <div className="flex justify-between text-xs font-semibold pt-1.5 border-t border-gray-100">
-              <span className="text-gray-700">Total expenses</span>
-              <span className="text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
-            </div>
-            {totalSavings > 0 && (
-              <div className="flex justify-between text-xs font-semibold text-[#0D7377]">
-                <span>Savings</span>
-                <span className="tabular-nums">{fmt(totalSavings)}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-
-      </div>
     </div>
   )
 }
@@ -1772,9 +1911,58 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selec
   )
 }
 
+function calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesProj, projectedVariable, annualNet, fixedAnnualProjected, monthsWithData }) {
+  if (annualNet <= 0 || monthsWithData === 0) return null
+
+  // Savings Rate: 0–40 pts (use YTD rate if available, else projected)
+  const rate = savingsRateYTD !== null ? savingsRateYTD : savingsRate
+  const srScore = rate === null || rate <= 0 ? 0 : Math.min((rate / 30) * 40, 40)
+
+  // Expense Ratio: 0–20 pts — projected variable vs net income
+  let erScore = 10
+  if (annualNet > 0 && projectedVariable !== null) {
+    const ratio = projectedVariable / annualNet
+    erScore = ratio >= 0.8 ? 0 : ratio >= 0.7 ? 3 : ratio >= 0.6 ? 8 : ratio >= 0.5 ? 13 : ratio >= 0.4 ? 17 : 20
+  }
+
+  // Cost Balance: 0–30 pts — fixed vs total projected expenses
+  let fvScore = 15
+  if (totalExpensesProj !== null && totalExpensesProj > 0) {
+    const fRatio = fixedAnnualProjected / totalExpensesProj
+    fvScore = fRatio >= 0.3 && fRatio <= 0.6 ? 30 : fRatio >= 0.2 && fRatio <= 0.7 ? 20 : 10
+  }
+
+  // Data completeness: 0–10 pts — how many months have transaction data
+  const clarityScore = Math.round((Math.min(monthsWithData, 10) / 10) * 10)
+
+  return {
+    score: Math.round(srScore + erScore + fvScore + clarityScore),
+    components: [
+      { label: 'Savings Rate',   value: Math.round(srScore),    max: 40 },
+      { label: 'Expense Ratio',  value: Math.round(erScore),    max: 20 },
+      { label: 'Cost Balance',   value: Math.round(fvScore),    max: 30 },
+      { label: 'Data Coverage',  value: Math.round(clarityScore), max: 10 },
+    ],
+  }
+}
+
+function getAnnualInsight(score, { savingsRate, savingsRateYTD }) {
+  const rate = savingsRateYTD !== null ? savingsRateYTD : savingsRate
+  if (score >= 85) return { headline: 'Outstanding year', sub: 'High savings rate and a healthy cost structure — you\'re on track' }
+  if (score >= 70) return { headline: 'Strong performance', sub: 'Solid margins this year — small optimisations could push you higher' }
+  if (score >= 55) {
+    if (rate !== null && rate < 10)
+      return { headline: 'Savings are thin', sub: 'Low savings rate YTD — review fixed and variable costs to build headroom' }
+    return { headline: 'Room to improve', sub: 'Decent year overall — import more months for a fuller picture' }
+  }
+  if (score >= 40) return { headline: 'Breaking even', sub: 'Costs are close to income — trim discretionary spending to build a buffer' }
+  if (score >= 20) return { headline: 'Costs outpacing income', sub: 'High expense ratio this year — review fixed and variable spend' }
+  return { headline: 'Needs attention', sub: 'Add salary info and import transactions to generate your score' }
+}
+
 // ─── AnnualSummary ────────────────────────────────────────────────────────────
 
-function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selectedYear }) {
+function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selectedYear, onNavigate }) {
   const gross            = salary.gross
   const taxAmount        = gross * (salary.taxRate / 100)
   const deductionsAnnual = salary.deductions * 12
@@ -1869,45 +2057,134 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
     : savingsRate >= 10 ? '#F59E0B'
     : '#EF4444'
 
+  const healthScore   = calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesProj, projectedVariable, annualNet, fixedAnnualProjected, monthsWithData })
+  const annualScoreColor = healthScore === null ? '#6B7280'
+    : healthScore.score >= 85 ? '#14A085'
+    : healthScore.score >= 70 ? '#0D7377'
+    : healthScore.score >= 55 ? '#3B82F6'
+    : healthScore.score >= 40 ? '#F59E0B'
+    : healthScore.score >= 20 ? '#F97316'
+    : '#EF4444'
+  const annualScoreGrade = healthScore === null ? null
+    : healthScore.score >= 85 ? 'A+' : healthScore.score >= 70 ? 'A' : healthScore.score >= 55 ? 'B'
+    : healthScore.score >= 40 ? 'C' : healthScore.score >= 20 ? 'D' : 'F'
+  const annualInsight = healthScore !== null ? getAnnualInsight(healthScore.score, { savingsRate, savingsRateYTD }) : null
+
+  if (annualNet === 0 && debits.length === 0 && fixedCosts.length === 0 && savingsEntries.length === 0) {
+    return (
+      <EmptyState
+        icon="📈"
+        title="No annual data yet"
+        description="Add your salary and import transactions to see your annual income statement, projections, and performance summary."
+        actionLabel="Add Salary"
+        onAction={() => onNavigate('salary')}
+      />
+    )
+  }
+
   return (
     <div>
 
+      {/* Performance Grade card — full width */}
+      {healthScore !== null ? (
+        <div className="rounded-2xl p-6 mb-6 border border-white/10 overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #0F3460 0%, #1A1A2E 50%, #0D2137 100%)' }}>
+          <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at 15% 50%, ${annualScoreColor}18 0%, transparent 60%)` }} />
+          <div className="relative flex items-center gap-8">
+            <div className="shrink-0 w-56">
+              <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em] mb-4">Annual Score</p>
+              <div className="flex items-end gap-2 mb-3">
+                <span className="text-[72px] font-black leading-none tabular-nums" style={{ color: annualScoreColor }}>
+                  {healthScore.score}
+                </span>
+                <div className="flex flex-col gap-1 mb-2">
+                  <span className="text-sm font-semibold text-white/25 leading-none">/100</span>
+                  <span className="px-2 py-0.5 rounded-md text-xs font-black leading-none" style={{ backgroundColor: annualScoreColor + '28', color: annualScoreColor }}>
+                    {annualScoreGrade}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm font-semibold text-white leading-snug">{annualInsight.headline}</p>
+              <p className="text-xs text-white/40 mt-1 leading-snug">{annualInsight.sub}</p>
+            </div>
+            <div className="w-px bg-white/10 self-stretch" />
+            <div className="flex-1 grid grid-cols-2 gap-x-10 gap-y-5">
+              {healthScore.components.map(c => {
+                const pct = (c.value / c.max) * 100
+                return (
+                  <div key={c.label}>
+                    <div className="flex justify-between items-baseline mb-2">
+                      <span className="text-[11px] font-medium text-white/45">{c.label}</span>
+                      <span className="text-xs font-bold tabular-nums" style={{ color: annualScoreColor }}>
+                        {c.value}<span className="text-white/20 font-normal">/{c.max}</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-white/[0.08]">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: annualScoreColor, opacity: 0.85 }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl p-6 mb-6 border border-white/10 flex items-center gap-4" style={{ background: 'linear-gradient(135deg, #0F3460 0%, #1A1A2E 100%)' }}>
+          <div>
+            <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em] mb-2">Annual Score</p>
+            <p className="text-2xl font-black text-white/20">—</p>
+          </div>
+          <p className="text-xs text-white/30 ml-2">Add salary details to generate your score</p>
+        </div>
+      )}
+
       {/* KPI cards — dark navy, 4-column grid */}
-      <div className="grid grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-4 gap-6 mb-6">
 
         {/* Card 1: Annual Net Income */}
-        <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-          <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Annual Net Income</p>
-          <p className={`text-2xl font-bold tabular-nums ${annualNet > 0 ? 'text-white' : 'text-white/20'}`}>
+        <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Annual Net Income</p>
+            <Wallet className="w-4 h-4 text-white/20" />
+          </div>
+          <p className={`text-3xl font-bold tabular-nums ${annualNet > 0 ? 'text-teal-400' : 'text-white/20'}`}>
             {annualNet > 0 ? fmt(annualNet) : '—'}
           </p>
           <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: '#0D7377' }} />
         </div>
 
         {/* Card 2: Total Expenses YTD */}
-        <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-          <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Total Expenses YTD</p>
-          <p className={`text-2xl font-bold tabular-nums ${totalExpYTD > 0 ? 'text-white' : 'text-white/20'}`}>
+        <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Total Expenses YTD</p>
+            <TrendingDown className="w-4 h-4 text-white/20" />
+          </div>
+          <p className={`text-3xl font-bold tabular-nums ${totalExpYTD > 0 ? 'text-red-400' : 'text-white/20'}`}>
             {totalExpYTD > 0 ? fmt(totalExpYTD) : '—'}
           </p>
           <div className="mt-3 h-[3px] w-7 rounded-full bg-red-400/70" />
         </div>
 
         {/* Card 3: Savings YTD */}
-        <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-          <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Savings YTD</p>
-          <p className={`text-2xl font-bold tabular-nums ${totalSavingsYTD > 0 ? 'text-white' : 'text-white/20'}`}>
+        <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings YTD</p>
+            <PiggyBank className="w-4 h-4 text-white/20" />
+          </div>
+          <p className={`text-3xl font-bold tabular-nums ${totalSavingsYTD > 0 ? 'text-teal-400' : 'text-white/20'}`}>
             {totalSavingsYTD > 0 ? fmt(totalSavingsYTD) : '—'}
           </p>
           <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: totalSavingsYTD > 0 ? '#14A085' : '#374151' }} />
         </div>
 
         {/* Card 4: Savings Rate YTD */}
-        <div className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-          <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">Savings Rate YTD</p>
-          <p className={`text-2xl font-bold tabular-nums ${
+        <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings Rate YTD</p>
+            <Percent className="w-4 h-4 text-white/20" />
+          </div>
+          <p className={`text-3xl font-bold tabular-nums ${
             savingsRateYTD === null ? 'text-white/20'
-            : savingsRateYTD >= 20 ? 'text-[#14A085]'
+            : savingsRateYTD >= 20 ? 'text-teal-400'
             : savingsRateYTD >= 10 ? 'text-amber-400'
             : 'text-red-400'
           }`}>
@@ -1920,8 +2197,12 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
       </div>
 
       {/* Annual P&L card */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
-        <h2 className="text-sm font-semibold text-gray-800 mb-4">Annual Financial Summary — {selectedYear}</h2>
+      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
+        <div className="flex items-center gap-2 mb-5">
+          <BarChart3 className="w-4 h-4 text-gray-400" />
+          <h2 className="text-base font-bold text-gray-800">Annual Financial Summary</h2>
+          <span className="text-sm text-gray-400 ml-1">— {selectedYear}</span>
+        </div>
 
         {/* Income rows */}
         <div className="divide-y divide-gray-50">
@@ -2002,11 +2283,12 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
       </div>
 
       {/* YTD Income Statement */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
-        <h2 className="text-sm font-semibold text-gray-800 mb-4">
-          YTD Income Statement — {selectedYear}
-          {monthsWithData > 0 && <span className="ml-2 text-xs font-normal text-gray-400">({monthsWithData} mo)</span>}
-        </h2>
+      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
+        <div className="flex items-center gap-2 mb-5">
+          <ArrowUpRight className="w-4 h-4 text-gray-400" />
+          <h2 className="text-base font-bold text-gray-800">YTD Income Statement</h2>
+          <span className="text-sm text-gray-400 ml-1">— {selectedYear}{monthsWithData > 0 ? ` (${monthsWithData} mo)` : ''}</span>
+        </div>
 
         {/* Income */}
         <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1">Income</p>
@@ -2053,7 +2335,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         </div>
         <div className="flex justify-between items-center py-3.5 border-t-4 border-gray-800 mt-1">
           <span className="text-sm font-bold text-gray-800">Net Savings YTD</span>
-          <span className={`text-xl font-bold tabular-nums ${
+          <span className={`text-3xl font-bold tabular-nums ${
             totalSavingsYTD === null ? 'text-gray-300' : 'text-[#0D7377]'
           }`}>
             {totalSavingsYTD === null ? '—' : fmt(totalSavingsYTD)}
@@ -2062,11 +2344,14 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
       </div>
 
       {/* Bottom row: bar chart + gauge */}
-      <div className="flex gap-5 items-start">
+      <div className="flex gap-6 items-start">
 
         {/* Bar chart */}
-        <div className="flex-1 bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-sm font-semibold text-gray-800 mb-3">Monthly Spending Overview</p>
+        <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 className="w-4 h-4 text-gray-400" />
+            <p className="text-base font-bold text-gray-800">Monthly Spending Overview</p>
+          </div>
           <BarChart width={520} height={220} data={chartData} margin={{ top: 20, right: 10, left: 10, bottom: 0 }}>
             <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
             <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={40} />
@@ -2091,8 +2376,11 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         </div>
 
         {/* Savings rate gauge */}
-        <div className="w-52 bg-white rounded-xl border border-gray-100 p-5 flex flex-col items-center">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 self-start">Savings Rate</p>
+        <div className="w-52 bg-white rounded-xl border border-gray-100 p-6 flex flex-col items-center">
+          <div className="flex items-center gap-1.5 mb-2 self-start">
+            <Percent className="w-3.5 h-3.5 text-gray-400" />
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Savings Rate</p>
+          </div>
 
           <svg viewBox="0 0 180 100" className="w-full">
             <path d="M 20,92 A 70,70 0 0,1 160,92"
@@ -2132,7 +2420,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
 
 // ─── YearComparison ──────────────────────────────────────────────────────────
 
-function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
+function YearComparison({ transactions, fixedCosts, savingsEntries, salary, onNavigate }) {
   function fixedMonthlyForYear(year) {
     return fixedCosts
       .filter(c => !isSaving(c.category) && (!c.year || c.year === year))
@@ -2153,15 +2441,13 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary }) {
 
   if (years.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 gap-3">
-        <div className="w-14 h-14 rounded-2xl bg-[#1A1A2E] flex items-center justify-center">
-          <svg className="w-7 h-7 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
-          </svg>
-        </div>
-        <p className="text-sm font-semibold text-gray-700">No transaction data yet</p>
-        <p className="text-xs text-gray-400">Import transactions from multiple years to see year-over-year trends</p>
-      </div>
+      <EmptyState
+        icon="📊"
+        title="No comparison data yet"
+        description="Import transactions from at least one year to start comparing your financial performance over time."
+        actionLabel="Import Transactions"
+        onAction={() => onNavigate('transactions')}
+      />
     )
   }
 
@@ -2842,7 +3128,7 @@ function AuthScreen() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#0D7377] hover:bg-[#0b6165] text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+              className="w-full bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
               {loading ? '…' : mode === 'login' ? 'Log In' : 'Create Account'}
             </button>
@@ -2985,7 +3271,7 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
           <button
             onClick={handleSaveName}
             disabled={nameSaving || !displayName.trim()}
-            className="px-4 py-2.5 rounded-lg text-xs font-medium bg-[#0D7377] text-white hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] text-center"
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-teal-500 hover:bg-teal-400 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] text-center"
           >
             {nameSaving ? '…' : nameSaved ? 'Saved ✓' : 'Save'}
           </button>
@@ -3121,6 +3407,7 @@ export default function App() {
   const [dashSavingsOpen, setDashSavingsOpen]   = useState(true)
   const dataLoadedFor   = useRef(null)
   const salaryTimerRef  = useRef(null)
+  const csvInputRef     = useRef(null)
 
   const dedupKey = t => `${t.date}|${t.amount}|${t.description.toUpperCase().trim()}`
 
@@ -3682,8 +3969,8 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* Top bar */}
-        <header className="bg-white border-b border-gray-200 px-6 flex items-center justify-between h-14 shrink-0">
-          <h1 className="text-sm font-medium text-gray-800">{PAGE_TITLES[activePage] || ''}</h1>
+        <header className="bg-white border-b border-gray-200 px-6 flex items-center justify-between py-4 shrink-0">
+          <h1 className="text-2xl font-bold text-gray-900">{PAGE_TITLES[activePage] || ''}</h1>
           <div className="flex items-center gap-3">
             {availableYears.length > 1 && activePage !== 'year-comparison' && (
               <div className="flex items-center gap-1.5">
@@ -3698,7 +3985,7 @@ export default function App() {
                 ))}
               </div>
             )}
-            <label className="cursor-pointer bg-white border border-gray-200 text-gray-600 text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
+            <label className="cursor-pointer border border-gray-300 text-gray-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
               Import CSV
               <input type="file" accept=".csv" className="hidden" onChange={handleFileInput} />
             </label>
@@ -3735,7 +4022,7 @@ export default function App() {
         )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto p-6 bg-gray-200">
+        <main className="flex-1 overflow-auto px-6 py-8 bg-gray-200">
 
           {activePage === 'get-started' && (
             <GetStartedPage
@@ -3776,7 +4063,7 @@ export default function App() {
                     <p className="text-sm font-semibold text-gray-800">Import CSV</p>
                     <p className="text-xs text-gray-400 mt-0.5">RBC, TD, Scotiabank, BMO, CIBC</p>
                   </div>
-                  <input type="file" accept=".csv" className="hidden" onChange={handleFileInput} />
+                  <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileInput} />
                 </label>
 
                 {/* Connect Bank — coming soon */}
@@ -3904,6 +4191,7 @@ export default function App() {
                 fuzzyPrompt={fuzzyPrompt}
                 onFuzzyAccept={handleFuzzyAccept}
                 onFuzzyDismiss={handleFuzzyDismiss}
+                onImport={() => csvInputRef.current?.click()}
               />
             </div>
           )}
@@ -3928,6 +4216,7 @@ export default function App() {
               customTags={customTags}
               onTagCategory={addCustomTag}
               onUntagCategory={removeCustomTag}
+              onNavigate={setActivePage}
             />
           )}
 
@@ -3958,6 +4247,7 @@ export default function App() {
               fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
               savingsEntries={savingsEntries.filter(e => !e.year || e.year === selectedYear)}
               selectedYear={selectedYear}
+              onNavigate={setActivePage}
             />
           )}
 
@@ -3967,6 +4257,7 @@ export default function App() {
               fixedCosts={fixedCosts}
               savingsEntries={savingsEntries}
               salary={salary}
+              onNavigate={setActivePage}
             />
           )}
 
