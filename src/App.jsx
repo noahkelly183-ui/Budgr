@@ -4,7 +4,7 @@ import { supabase } from './supabase.js'
 import EmptyState from './components/EmptyState.jsx'
 import HelpTip from './components/HelpTip.jsx'
 import Privacy from './pages/Privacy.jsx'
-import { TrendingUp, TrendingDown, PiggyBank, Percent, CalendarDays, BarChart3, Wallet, ArrowUpRight, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { TrendingUp, TrendingDown, PiggyBank, Percent, CalendarDays, BarChart3, Wallet, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie, ResponsiveContainer } from 'recharts'
 
 const CATEGORIES = [
@@ -2213,25 +2213,6 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
     const cat = t.category || 'Uncategorized'
     varByCategory[cat] = (varByCategory[cat] || 0) + t.amount
   }
-  const varGroups = CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(g => ({
-    ...g,
-    entries: g.cats
-      .filter(cat => varByCategory[cat] > 0)
-      .map(cat => ({ cat, amt: varByCategory[cat] }))
-      .sort((a, b) => b.amt - a.amt),
-  })).filter(g => g.entries.length > 0)
-  const knownCats = new Set(CATEGORIES)
-  const customVarEntries = Object.entries(varByCategory)
-    .filter(([cat]) => !knownCats.has(cat))
-    .map(([cat, amt]) => ({ cat, amt }))
-    .sort((a, b) => b.amt - a.amt)
-
-  // Savings breakdown by category (entries × elapsed months for YTD amounts)
-  const savingsCatMap = savingsEntries.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + monthlyRate(e) * monthsElapsed
-    return acc
-  }, {})
-  const savingsCatEntries = Object.entries(savingsCatMap).sort((a, b) => b[1] - a[1])
 
 
   const healthScore   = calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesProj, projectedVariable, annualNet, fixedAnnualProjected, monthsWithData })
@@ -2317,69 +2298,70 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         </div>
       )}
 
-      {/* KPI cards — dark navy, 4-column grid */}
-      <div className="grid grid-cols-4 gap-6 mb-6">
+      {/* KPI cards — insight-tab style */}
+      <div
+        className="rounded-2xl border border-white/[0.07] overflow-hidden mb-6"
+        style={{ background: 'linear-gradient(160deg, #0F3460 0%, #1A1A2E 45%, #0D2137 100%)' }}
+      >
+        <div className="flex items-center gap-2.5 px-6 pt-5 pb-4 border-b border-white/[0.06]">
+          <BarChart3 className="w-4 h-4 text-white/30" />
+          <span className="text-[11px] font-bold text-white/30 uppercase tracking-[0.2em]">Year at a Glance</span>
+        </div>
+        <div className="p-6 grid grid-cols-2 gap-3">
 
-        {/* Card 1: Annual Net Income */}
-        <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Annual Net Income</p>
+          {/* Annual Net Income */}
+          <div className="rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: '2px solid #0D7377' }}>
+            <div className="flex items-center gap-1.5 mb-2 text-teal-400">
+              <Wallet className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Annual Net Income</span>
               <HelpTip text="Your take-home pay after tax and deductions." />
             </div>
-            <Wallet className="w-4 h-4 text-white/20" />
+            <p className={`text-2xl font-bold tabular-nums ${annualNet > 0 ? 'text-white/80' : 'text-white/20'}`}>
+              {annualNet > 0 ? fmt(annualNet) : '—'}
+            </p>
           </div>
-          <p className={`text-3xl font-bold tabular-nums ${annualNet > 0 ? 'text-teal-400' : 'text-white/20'}`}>
-            {annualNet > 0 ? fmt(annualNet) : '—'}
-          </p>
-          <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: '#0D7377' }} />
-        </div>
 
-        {/* Card 2: Total Expenses YTD */}
-        <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Total Expenses YTD</p>
-            <TrendingDown className="w-4 h-4 text-white/20" />
-          </div>
-          <p className={`text-3xl font-bold tabular-nums ${totalExpYTD > 0 ? 'text-red-400' : 'text-white/20'}`}>
-            {totalExpYTD > 0 ? fmt(totalExpYTD) : '—'}
-          </p>
-          <div className="mt-3 h-[3px] w-7 rounded-full bg-red-400/70" />
-        </div>
-
-        {/* Card 3: Savings YTD */}
-        <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings YTD</p>
-            <PiggyBank className="w-4 h-4 text-white/20" />
-          </div>
-          <p className={`text-3xl font-bold tabular-nums ${totalSavingsYTD > 0 ? 'text-teal-400' : 'text-white/20'}`}>
-            {totalSavingsYTD > 0 ? fmt(totalSavingsYTD) : '—'}
-          </p>
-          <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: totalSavingsYTD > 0 ? '#14A085' : '#374151' }} />
-        </div>
-
-        {/* Card 4: Savings Rate YTD */}
-        <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings Rate YTD</p>
-              <HelpTip text="How much of your income you kept instead of spending." />
+          {/* Total Expenses YTD */}
+          <div className="rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: '2px solid #EF4444' }}>
+            <div className="flex items-center gap-1.5 mb-2" style={{ color: '#F87171' }}>
+              <TrendingDown className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Total Expenses YTD</span>
             </div>
-            <Percent className="w-4 h-4 text-white/20" />
+            <p className={`text-2xl font-bold tabular-nums ${totalExpYTD > 0 ? 'text-red-400' : 'text-white/20'}`}>
+              {totalExpYTD > 0 ? fmt(totalExpYTD) : '—'}
+            </p>
           </div>
-          <p className={`text-3xl font-bold tabular-nums ${
-            savingsRateYTD === null ? 'text-white/20'
-            : savingsRateYTD >= 20 ? 'text-teal-400'
-            : savingsRateYTD >= 10 ? 'text-amber-400'
-            : 'text-red-400'
-          }`}>
-            {savingsRateYTD === null ? '—' : savingsRateYTD.toFixed(1) + '%'}
-          </p>
-          <div className="mt-3 h-[3px] w-7 rounded-full"
-            style={{ backgroundColor: savingsRateYTD === null ? '#374151' : savingsRateYTD >= 20 ? '#0D7377' : savingsRateYTD >= 10 ? '#F59E0B' : '#EF4444' }} />
-        </div>
 
+          {/* Savings YTD */}
+          <div className="rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: '2px solid #14A085' }}>
+            <div className="flex items-center gap-1.5 mb-2 text-teal-400">
+              <PiggyBank className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Savings YTD</span>
+            </div>
+            <p className={`text-2xl font-bold tabular-nums ${totalSavingsYTD > 0 ? 'text-teal-400' : 'text-white/20'}`}>
+              {totalSavingsYTD > 0 ? fmt(totalSavingsYTD) : '—'}
+            </p>
+          </div>
+
+          {/* Savings Rate YTD */}
+          {(() => {
+            const rateColor = savingsRateYTD === null ? '#374151' : savingsRateYTD >= 20 ? '#0D7377' : savingsRateYTD >= 10 ? '#F59E0B' : '#EF4444'
+            const rateTextColor = savingsRateYTD === null ? 'text-white/20' : savingsRateYTD >= 20 ? 'text-teal-400' : savingsRateYTD >= 10 ? 'text-amber-400' : 'text-red-400'
+            return (
+              <div className="rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: `2px solid ${rateColor}` }}>
+                <div className="flex items-center gap-1.5 mb-2" style={{ color: rateColor === '#374151' ? '#6B7280' : rateColor }}>
+                  <Percent className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Savings Rate YTD</span>
+                  <HelpTip text="How much of your income you kept instead of spending." />
+                </div>
+                <p className={`text-2xl font-bold tabular-nums ${rateTextColor}`}>
+                  {savingsRateYTD === null ? '—' : savingsRateYTD.toFixed(1) + '%'}
+                </p>
+              </div>
+            )
+          })()}
+
+        </div>
       </div>
 
       {/* Annual P&L card */}
@@ -2468,66 +2450,115 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         </div>
       </div>
 
-      {/* YTD Income Statement */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
-        <div className="flex items-center gap-2 mb-5">
-          <ArrowUpRight className="w-4 h-4 text-gray-400" />
-          <h2 className="text-base font-bold text-gray-800">YTD Income Statement</h2>
-          <span className="text-sm text-gray-400 ml-1">— {selectedYear}{monthsWithData > 0 ? ` (${monthsWithData} mo)` : ''}</span>
-        </div>
+      {/* YTD Income Statement — matches Monthly Income Statement format */}
+      {(() => {
+        const fixedRows = fixedCostItems.map(c => ({
+          name: c.name,
+          amount: monthlyRate(c) * monthsElapsed,
+          hex: CATEGORY_COLOR[c.category] || '#9CA3AF',
+        }))
 
-        {/* Income */}
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 pb-1">Income</p>
-        <div className="flex justify-between items-center py-2 border-b border-gray-50">
-          <span className="text-sm text-gray-600">Net Income YTD</span>
-          <span className="text-sm font-medium text-gray-800 tabular-nums">{incomeToDate > 0 ? fmt(incomeToDate) : '—'}</span>
-        </div>
-        <div className="flex justify-between items-center py-2.5 border-t-2 border-gray-200 mb-4">
-          <span className="text-sm font-semibold text-gray-700">Total Income</span>
-          <span className="text-sm font-bold text-gray-900 tabular-nums">{incomeToDate > 0 ? fmt(incomeToDate) : '—'}</span>
-        </div>
+        const varRows = Object.entries(varByCategory)
+          .sort((a, b) => b[1] - a[1])
+          .map(([cat, amt]) => ({ name: cat, amount: amt, hex: CATEGORY_COLOR[cat] || '#9CA3AF' }))
 
-        {/* Fixed Costs — single total line */}
-        <div className="flex justify-between items-center py-2 border-b border-gray-50">
-          <div className="flex items-center"><span className="text-sm text-gray-600">Fixed Costs</span><HelpTip text="Recurring monthly expenses like rent or subscriptions." /></div>
-          <span className="text-sm font-medium text-gray-800 tabular-nums">{fixedYTD > 0 ? fmt(fixedYTD) : '—'}</span>
-        </div>
+        const savingsRows = savingsEntries.map(e => ({
+          name: e.name,
+          amount: monthlyRate(e) * monthsElapsed,
+          hex: CATEGORY_COLOR[e.category] || '#14A085',
+        }))
 
-        {/* Variable Spending — one line per group */}
-        {varGroups.map(g => {
-          const groupTotal = g.entries.reduce((s, e) => s + e.amt, 0)
-          return (
-            <div key={g.name} className="flex items-center py-2 border-b border-gray-50">
-              <span className="w-2 h-2 rounded-full shrink-0 mr-2.5" style={{ backgroundColor: g.hex }} />
-              <span className="text-sm text-gray-600 flex-1">{g.name}</span>
-              <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(groupTotal)}</span>
-            </div>
-          )
-        })}
-        {customVarEntries.length > 0 && (
-          <div className="flex justify-between items-center py-2 border-b border-gray-50">
-            <span className="text-sm text-gray-600">Other</span>
-            <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(customVarEntries.reduce((s, e) => s + e.amt, 0))}</span>
+        const Row = ({ name, amount, hex }) => (
+          <div className="flex items-center gap-2.5 py-1.5">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: hex }} />
+            <span className="flex-1 text-sm text-gray-600 truncate">{name}</span>
+            <span className="text-sm font-medium text-gray-700 tabular-nums">{fmt(amount)}</span>
           </div>
-        )}
-        {varGroups.length === 0 && customVarEntries.length === 0 && (
-          <div className="py-2 border-b border-gray-50"><span className="text-sm italic text-gray-400">No variable transactions yet</span></div>
-        )}
+        )
 
-        {/* Totals */}
-        <div className="flex justify-between items-center py-2.5 border-t border-gray-200">
-          <span className="text-sm font-semibold text-gray-700">Total Expenses YTD</span>
-          <span className="text-sm font-bold text-gray-900 tabular-nums">{totalExpYTD > 0 ? fmt(totalExpYTD) : '—'}</span>
-        </div>
-        <div className="flex justify-between items-center py-3.5 border-t-4 border-gray-800 mt-1">
-          <span className="text-sm font-bold text-gray-800">Net Savings YTD</span>
-          <span className={`text-3xl font-bold tabular-nums ${
-            totalSavingsYTD === null ? 'text-gray-300' : 'text-[#0D7377]'
-          }`}>
-            {totalSavingsYTD === null ? '—' : fmt(totalSavingsYTD)}
-          </span>
-        </div>
-      </div>
+        return (
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-6">
+
+            {/* Header */}
+            <div className="px-5 py-3 border-b border-gray-100 flex items-baseline justify-between">
+              <h2 className="text-sm font-semibold text-gray-800">YTD Income Statement</h2>
+              <p className="text-xs text-gray-400">{selectedYear}{monthsWithData > 0 ? ` · ${monthsWithData} mo` : ''}</p>
+            </div>
+
+            {/* NET INCOME */}
+            <div className="px-5 py-3">
+              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Net Income</p>
+              <div className="flex justify-between items-center py-1.5">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-gray-700">Net Income YTD</span>
+                  <HelpTip text="Take-home pay accumulated so far this year." />
+                </div>
+                <span className={`text-sm font-semibold tabular-nums ${incomeToDate > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {incomeToDate > 0 ? fmt(incomeToDate) : annualNet === 0 ? 'Add salary →' : '—'}
+                </span>
+              </div>
+            </div>
+
+            {/* FIXED COSTS */}
+            <div className="px-5 py-3 border-t border-gray-100">
+              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Fixed Costs</p>
+              {fixedRows.length > 0
+                ? fixedRows.map((r, i) => <Row key={i} {...r} />)
+                : <p className="text-xs text-gray-300 py-1.5">No fixed costs set up</p>
+              }
+            </div>
+
+            {/* VARIABLE COSTS */}
+            <div className="px-5 py-3 border-t border-gray-100">
+              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Variable Costs</p>
+              {varRows.length > 0
+                ? varRows.map((r, i) => <Row key={i} {...r} />)
+                : <p className="text-xs text-gray-300 py-1.5">No variable transactions this year</p>
+              }
+            </div>
+
+            {/* SAVINGS */}
+            <div className="px-5 py-3 border-t border-gray-100">
+              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Savings</p>
+              {savingsRows.length > 0
+                ? savingsRows.map((r, i) => <Row key={i} {...r} />)
+                : <p className="text-xs text-gray-300 py-1.5">No savings allocations set up</p>
+              }
+            </div>
+
+            {/* TOTALS FOOTER */}
+            <div className="px-5 py-3 border-t-2 border-gray-200 space-y-1.5">
+              {leftoverYTD > 0 && (
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-gray-500">Surplus</span>
+                  <span className="text-sm font-medium tabular-nums" style={{ color: '#14A085' }}>{fmt(leftoverYTD)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center py-1">
+                <span className="text-sm font-semibold text-gray-700">Total Savings YTD</span>
+                <span className={`text-sm font-bold tabular-nums ${allSavingsYTD > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
+                  {allSavingsYTD > 0 ? fmt(allSavingsYTD) : '—'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-gray-500">Savings Rate</span>
+                  <HelpTip text="How much of your income you kept instead of spending." />
+                </div>
+                <span className={`text-sm font-semibold tabular-nums ${
+                  savingsRateYTD === null ? 'text-gray-300'
+                  : savingsRateYTD >= 20 ? 'text-[#0D7377]'
+                  : savingsRateYTD >= 10 ? 'text-amber-500'
+                  : 'text-red-400'
+                }`}>
+                  {savingsRateYTD === null ? '—' : savingsRateYTD.toFixed(1) + '%'}
+                </span>
+              </div>
+            </div>
+
+          </div>
+        )
+      })()}
 
     </div>
   )
