@@ -652,7 +652,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
 
       <div className="grid grid-cols-3 gap-4">
         {cards.map(card => (
-          <div key={card.name} className="bg-white rounded-xl border border-gray-100 p-5">
+          <div key={card.name} className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col">
 
             {/* Card header */}
             <div className="flex items-center justify-between mb-4">
@@ -668,7 +668,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
             </div>
 
             {/* Category rows */}
-            <div className="space-y-3">
+            <div className="space-y-3 flex-1">
               {card.groups ? (
                 // Custom Tags card — grouped by tag name
                 card.groups.length > 0 ? card.groups.map(({ tag, items }) => (
@@ -758,7 +758,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
             </div>
 
             {/* Card footer */}
-            <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center">
+            <div className="mt-auto pt-3 border-t border-gray-100 flex justify-between items-center">
               <span className="text-xs text-gray-400">Total YTD</span>
               <span className={`text-sm font-semibold tabular-nums ${card.accent ? 'text-[#0D7377]' : 'text-gray-900'}`}>
                 {card.total > 0 ? fmt(card.total) : '—'}
@@ -3639,6 +3639,9 @@ export default function App() {
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
     if (!error && data) {
+      if (year && !data.year) {
+        await supabase.from('fixed_costs').update({ year }).eq('id', data.id).eq('user_id', user.id)
+      }
       setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: false, year: data.year ?? year ?? null }])
     }
   }
@@ -3665,6 +3668,9 @@ export default function App() {
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
     if (!error && data) {
+      if (year && !data.year) {
+        await supabase.from('fixed_costs').update({ year }).eq('id', data.id).eq('user_id', user.id)
+      }
       setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: true, year: data.year ?? year ?? null }])
     }
   }
@@ -4094,7 +4100,7 @@ export default function App() {
           </div>
           <button
             onClick={() => setActivePage('privacy')}
-            className="text-[10px] text-white/25 hover:text-white/60 transition-colors"
+            className="text-xs text-white/50 hover:text-white/90 transition-colors underline underline-offset-2"
           >
             Privacy
           </button>
