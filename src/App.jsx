@@ -2286,21 +2286,6 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
   }, {})
   const savingsCatEntries = Object.entries(savingsCatMap).sort((a, b) => b[1] - a[1])
 
-  const chartData = MONTHS.map(m => {
-    const txnTotal = debits
-      .filter(t => yearMonthOf(t.date) === selectedYear + '-' + m.id)
-      .reduce((s, t) => s + t.amount, 0)
-    const total = txnTotal > 0 ? txnTotal + fixedMonthlyTotal : 0
-    return { name: m.label.slice(0, 3), spend: total }
-  })
-
-  const ARC_LEN     = Math.PI * 70
-  const clampedRate = savingsRate !== null ? Math.max(0, Math.min(100, savingsRate)) : 0
-  const filledLen   = (clampedRate / 100) * ARC_LEN
-  const gaugeColor  = savingsRate === null ? '#D1D5DB'
-    : savingsRate >= 20 ? '#0D7377'
-    : savingsRate >= 10 ? '#F59E0B'
-    : '#EF4444'
 
   const healthScore   = calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesProj, projectedVariable, annualNet, fixedAnnualProjected, monthsWithData })
   const annualScoreColor = healthScore === null ? '#6B7280'
@@ -2597,77 +2582,6 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         </div>
       </div>
 
-      {/* Bottom row: bar chart + gauge */}
-      <div className="flex gap-6 items-start">
-
-        {/* Bar chart */}
-        <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="w-4 h-4 text-gray-400" />
-            <p className="text-base font-bold text-gray-800">Monthly Spending Overview</p>
-          </div>
-          <BarChart width={520} height={220} data={chartData} margin={{ top: 20, right: 10, left: 10, bottom: 0 }}>
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={40} />
-            <Tooltip
-              formatter={v => [fmt(v), 'Spend']}
-              contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }}
-              cursor={{ fill: '#F3F4F6' }}
-            />
-            <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-            <Bar
-              dataKey="spend"
-              name="Monthly Spend"
-              fill="#0D7377"
-              radius={[3, 3, 0, 0]}
-              label={{ position: 'top', fontSize: 9, fill: '#9CA3AF', formatter: v => v > 0 ? fmtK(v) : '' }}
-            >
-              {chartData.map((entry, i) => (
-                <Cell key={i} fill={entry.spend > 0 ? '#0D7377' : 'transparent'} />
-              ))}
-            </Bar>
-          </BarChart>
-        </div>
-
-        {/* Savings rate gauge */}
-        <div className="w-52 bg-white rounded-xl border border-gray-100 p-6 flex flex-col items-center">
-          <div className="flex items-center gap-1.5 mb-2 self-start">
-            <Percent className="w-3.5 h-3.5 text-gray-400" />
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Savings Rate</p>
-          </div>
-
-          <svg viewBox="0 0 180 100" className="w-full">
-            <path d="M 20,92 A 70,70 0 0,1 160,92"
-              fill="none" stroke="#E5E7EB" strokeWidth="14" strokeLinecap="round" />
-            {clampedRate > 0 && (
-              <path d="M 20,92 A 70,70 0 0,1 160,92"
-                fill="none" stroke={gaugeColor} strokeWidth="14" strokeLinecap="round"
-                strokeDasharray={`${filledLen} ${ARC_LEN}`}
-              />
-            )}
-            <text x="90" y="76" textAnchor="middle" fontSize="24" fontWeight="700"
-              fill={savingsRate === null ? '#D1D5DB' : gaugeColor}>
-              {savingsRate === null ? '—' : `${clampedRate.toFixed(0)}%`}
-            </text>
-          </svg>
-
-          <p className="text-[10px] text-gray-400 text-center -mt-1 mb-5">Projected Savings Rate</p>
-
-          <div className="w-full space-y-1.5">
-            <div className="h-2 rounded-full overflow-hidden flex">
-              <div className="w-[30%] bg-red-200" />
-              <div className="w-[35%] bg-amber-200" />
-              <div className="flex-1" style={{ backgroundColor: '#0D737750' }} />
-            </div>
-            <div className="flex justify-between text-[10px]">
-              <span className="text-red-400">{'< 10%'} Low</span>
-              <span className="text-amber-500">10–20% Good</span>
-              <span style={{ color: '#0D7377' }}>20%+ Great</span>
-            </div>
-          </div>
-        </div>
-
-      </div>
     </div>
   )
 }
