@@ -2677,26 +2677,6 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary, onNa
     return { name: m.label.slice(0, 3), delta }
   }).filter(d => d.delta !== 0) : []
 
-  // Cumulative spend line data
-  const cumulData = MONTHS.map((m, idx) => {
-    const entry = { name: m.label.slice(0, 3) }
-    displayYears.forEach(year => {
-      const fixedMo = yearMetrics.find(ym => ym.year === year)?.fixedMo ?? 0
-      entry[year] = MONTHS.slice(0, idx + 1).reduce((sum, mm) => {
-        const v = transactions
-          .filter(t =>
-            t.date?.startsWith(`${year}-${mm.id}`) &&
-            t.type === 'debit' &&
-            !EXCLUDE_FROM_TOTALS.has(t.category) &&
-            !isSaving(t.category)
-          )
-          .reduce((s, t) => s + t.amount, 0)
-        return sum + (v > 0 ? v + fixedMo : 0)
-      }, 0)
-    })
-    return entry
-  })
-
   // Category breakdown
   const catData = CATEGORY_GROUPS
     .filter(g => g.name !== 'Savings')
@@ -2821,9 +2801,6 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary, onNa
                   <p className="text-2xl font-bold tabular-nums" style={{ color: hasPct ? card.color : '#D1D5DB' }}>
                     {hasPct ? card.pct.toFixed(1) + '%' : '—'}
                   </p>
-                  <p className="text-[11px] text-gray-400 tabular-nums mt-0.5">
-                    {card.currAmt > 0 ? fmt(card.currAmt) : '—'}
-                  </p>
                   <div className="mt-1.5 min-h-[16px]">
                     {delta !== null ? (
                       <span className={`text-[10px] font-semibold flex items-center gap-0.5 ${isGood ? 'text-[#14A085]' : 'text-red-400'}`}>
@@ -2942,47 +2919,94 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary, onNa
 
       </div>{/* end pie row */}
 
-      {/* Cumulative spend + delta row */}
-      <div className="flex gap-3">
-
-        {/* Cumulative spend */}
-        <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
-          <p className="text-sm font-semibold text-gray-800 mb-1">Cumulative Spend</p>
-          <p className="text-xs text-gray-400 mb-4">Running total through the year</p>
+      {/* YoY delta */}
+      {prevYear && deltaData.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 p-6">
+          <p className="text-sm font-semibold text-gray-800 mb-1">Month-by-Month Delta</p>
+          <p className="text-xs text-gray-400 mb-4">{currentYear} vs {prevYear} — teal = spent less</p>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={cumulData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+            <BarChart data={deltaData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-              <Tooltip formatter={(v, name) => [fmt(v), name]} itemSorter={item => -displayYears.indexOf(item.dataKey)} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-              {displayYears.map((year, i) => (
-                <Line key={year} type="monotone" dataKey={year} stroke={YEAR_COLORS[i]} strokeWidth={2} dot={false} />
-              ))}
-            </LineChart>
+              <YAxis tickFormatter={v => fmtK(Math.abs(v))} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
+              <ReferenceLine y={0} stroke="#E5E7EB" strokeWidth={1} />
+              <Tooltip formatter={v => [fmt(Math.abs(v)), v >= 0 ? `More in ${currentYear}` : `Less in ${currentYear}`]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
+              <Bar dataKey="delta" radius={[3, 3, 0, 0]} maxBarSize={32}>
+                {deltaData.map((entry, i) => (
+                  <Cell key={i} fill={entry.delta <= 0 ? '#0D7377' : '#EF4444'} />
+                ))}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
         </div>
+      )}
 
-        {/* YoY delta */}
-        {prevYear && deltaData.length > 0 && (
-          <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
-            <p className="text-sm font-semibold text-gray-800 mb-1">Month Delta</p>
-            <p className="text-xs text-gray-400 mb-4">{currentYear} vs {prevYear} — teal = spent less</p>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={deltaData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={v => fmtK(Math.abs(v))} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-                <ReferenceLine y={0} stroke="#E5E7EB" strokeWidth={1} />
-                <Tooltip formatter={v => [fmt(Math.abs(v)), v >= 0 ? `More in ${currentYear}` : `Less in ${currentYear}`]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-                <Bar dataKey="delta" radius={[3, 3, 0, 0]} maxBarSize={32}>
-                  {deltaData.map((entry, i) => (
-                    <Cell key={i} fill={entry.delta <= 0 ? '#0D7377' : '#EF4444'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+      {/* YoY written insights */}
+      {prevYear && currM && prevM && (() => {
+        const insights = []
+
+        const totalChg = pctChange(currM.totalSpend, prevM.totalSpend)
+        if (totalChg !== null) {
+          const abs = Math.abs(currM.totalSpend - prevM.totalSpend)
+          insights.push({
+            text: `Total spending ${totalChg > 0 ? 'increased' : 'decreased'} by ${Math.abs(totalChg).toFixed(1)}% in ${currentYear} — ${fmt(abs)} ${totalChg > 0 ? 'more' : 'less'} than ${prevYear}.`,
+            good: totalChg < 0,
+          })
+        }
+
+        const varChg = pctChange(currM.variableSpend, prevM.variableSpend)
+        if (varChg !== null) {
+          const abs = Math.abs(currM.variableSpend - prevM.variableSpend)
+          insights.push({
+            text: `Variable spending ${varChg > 0 ? 'rose' : 'fell'} by ${Math.abs(varChg).toFixed(1)}% (${fmt(abs)}) compared to ${prevYear}.`,
+            good: varChg < 0,
+          })
+        }
+
+        if (currM.savingsYTD > 0 || prevM.savingsYTD > 0) {
+          const savChg = pctChange(currM.savingsYTD, prevM.savingsYTD)
+          if (savChg !== null) {
+            insights.push({
+              text: `You saved ${fmt(currM.savingsYTD)} in ${currentYear} vs ${fmt(prevM.savingsYTD)} in ${prevYear} — a ${savChg > 0 ? '+' : ''}${savChg.toFixed(1)}% change year-over-year.`,
+              good: savChg > 0,
+            })
+          }
+        }
+
+        const catChanges = catData
+          .map(g => ({ name: g.name, delta: (g.totals[currentYear] || 0) - (g.totals[prevYear] || 0), prev: g.totals[prevYear] || 0 }))
+          .filter(c => c.prev > 0)
+          .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        if (catChanges.length > 0) {
+          const top = catChanges[0]
+          const pct = top.prev > 0 ? (Math.abs(top.delta) / top.prev * 100).toFixed(1) : null
+          insights.push({
+            text: `The biggest shift was in ${top.name} — ${top.delta > 0 ? 'up' : 'down'} ${fmt(Math.abs(top.delta))}${pct ? ` (${pct}%)` : ''} year-over-year.`,
+            good: top.delta < 0,
+          })
+        }
+
+        const avgChg = pctChange(currM.avgMonthly, prevM.avgMonthly)
+        if (avgChg !== null) {
+          insights.push({
+            text: `Average monthly spend was ${fmt(currM.avgMonthly)} in ${currentYear}, ${avgChg > 0 ? 'up' : 'down'} from ${fmt(prevM.avgMonthly)} in ${prevYear}.`,
+            good: avgChg < 0,
+          })
+        }
+
+        if (insights.length === 0) return null
+        return (
+          <div className="bg-white rounded-xl border border-gray-100 p-6">
+            <p className="text-sm font-semibold text-gray-800 mb-4">{currentYear} vs {prevYear} — Key Changes</p>
+            <div className="grid grid-cols-2 gap-3">
+              {insights.map((ins, i) => (
+                <div key={i} className="bg-gray-50 rounded-lg border-l-4 p-3" style={{ borderLeftColor: ins.good ? '#0D7377' : '#F59E0B' }}>
+                  <p className="text-[12px] text-gray-600 leading-snug">{ins.text}</p>
+                </div>
+              ))}
+            </div>
           </div>
-        )}
-
-      </div>
+        )
+      })()}
 
       {/* Category breakdown */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
