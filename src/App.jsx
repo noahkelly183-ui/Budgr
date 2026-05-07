@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
 import EmptyState from './components/EmptyState.jsx'
@@ -313,16 +313,25 @@ function CategoryCombobox({ value, onChange }) {
 // ─── TransactionView (Transactions page — grouped by month with filter) ───────
 
 function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzyAccept, onFuzzyDismiss, onImport }) {
-  const [filter, setFilter] = useState('all')
+  const [filter, setFilter]       = useState('all')
+  const [catFilter, setCatFilter] = useState('')
 
-  const yearTxns      = selectedYear ? txns.filter(t => t.date?.startsWith(selectedYear)) : txns
-  const untaggedCount = yearTxns.filter(t => !t.category).length
-  const manualCount   = yearTxns.filter(t => t.category && !t.fromMemory).length
-  const filtered      = filter === 'untagged'
-    ? yearTxns.filter(t => !t.category)
-    : filter === 'manual'
-      ? yearTxns.filter(t => t.category && !t.fromMemory)
-      : yearTxns
+  const yearTxns       = selectedYear ? txns.filter(t => t.date?.startsWith(selectedYear)) : txns
+  const untaggedCount  = yearTxns.filter(t => !t.category).length
+  const manualCount    = yearTxns.filter(t => t.category && !t.fromMemory).length
+  const omittedCount   = yearTxns.filter(t => t.category === 'Omit').length
+  const highValueCount = yearTxns.filter(t => t.type === 'debit' && t.amount > 200).length
+  const availableCats  = [...new Set(yearTxns.map(t => t.category).filter(Boolean))].sort()
+
+  function setF(f) { setFilter(f); if (f !== 'category') setCatFilter('') }
+
+  const filtered =
+    filter === 'untagged'                      ? yearTxns.filter(t => !t.category) :
+    filter === 'manual'                        ? yearTxns.filter(t => t.category && !t.fromMemory) :
+    filter === 'omitted'                       ? yearTxns.filter(t => t.category === 'Omit') :
+    filter === 'highvalue'                     ? yearTxns.filter(t => t.type === 'debit' && t.amount > 200) :
+    filter === 'category' && catFilter         ? yearTxns.filter(t => t.category === catFilter) :
+    yearTxns
 
   const groupMap = new Map()
   for (const t of filtered) {
@@ -349,51 +358,48 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
     <div>
 
         {/* Filter bar */}
-        <div className="flex items-center gap-2 mb-4">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              filter === 'all'
-                ? 'bg-[#0D7377] text-white'
-                : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            All Transactions
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+
+          <button onClick={() => setF('all')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'all' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+            All
           </button>
-          <button
-            onClick={() => setFilter('untagged')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              filter === 'untagged'
-                ? 'bg-[#0D7377] text-white'
-                : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Untagged Only
-            {untaggedCount > 0 && (
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
-                filter === 'untagged' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-600'
-              }`}>
-                {untaggedCount}
-              </span>
-            )}
+
+          <button onClick={() => setF('untagged')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'untagged' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+            Untagged
+            {untaggedCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'untagged' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-600'}`}>{untaggedCount}</span>}
           </button>
-          <button
-            onClick={() => setFilter('manual')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              filter === 'manual'
-                ? 'bg-[#0D7377] text-white'
-                : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'
-            }`}
-          >
+
+          <button onClick={() => setF('manual')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'manual' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
             Manually Tagged
-            {manualCount > 0 && (
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
-                filter === 'manual' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'
-              }`}>
-                {manualCount}
-              </span>
-            )}
+            {manualCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'manual' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'}`}>{manualCount}</span>}
           </button>
+
+          <button onClick={() => setF('omitted')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'omitted' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+            Omitted
+            {omittedCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'omitted' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>{omittedCount}</span>}
+          </button>
+
+          <button onClick={() => setF('highvalue')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'highvalue' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+            High Value
+            {highValueCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'highvalue' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-600'}`}>{highValueCount}</span>}
+          </button>
+
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setF('category')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'category' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+              Category ▾
+            </button>
+            {filter === 'category' && (
+              <select
+                value={catFilter}
+                onChange={e => setCatFilter(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#0D7377]"
+              >
+                <option value="">— pick one —</option>
+                {availableCats.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+          </div>
+
         </div>
 
         {/* Fuzzy match prompt */}
@@ -448,7 +454,12 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
               </div>
             ) : (
               <div className="bg-white border border-gray-100 border-t-0 rounded-b-xl px-4 py-8 text-center text-gray-400 text-xs">
-                {filter === 'untagged' ? 'All transactions are tagged!' : 'No manually tagged transactions yet'}
+                {filter === 'untagged'   ? 'All transactions are tagged!' :
+                 filter === 'manual'     ? 'No manually tagged transactions yet' :
+                 filter === 'omitted'    ? 'No omitted transactions' :
+                 filter === 'highvalue'  ? 'No transactions over $200' :
+                 filter === 'category'   ? (catFilter ? `No transactions in "${catFilter}"` : 'Pick a category above') :
+                 'No transactions found'}
               </div>
             )
           ) : groups.map((group, gi) => {
@@ -4115,6 +4126,50 @@ export default function App() {
                 </div>
 
               </div>
+
+              {/* Privacy note */}
+              <p className="text-xs text-gray-400 text-center mt-3 mb-5">
+                Your CSV is used only to categorize and summarize transactions. You can delete your data at any time.
+              </p>
+
+              {/* Upload state banner */}
+              {(() => {
+                const untaggedAll = transactions.filter(t => !t.category).length
+                const hasUploads  = csvUploads.length > 0
+                const activeStep  = !hasUploads ? 0 : untaggedAll > 0 ? 2 : transactions.length > 0 ? 3 : 1
+                const steps = [
+                  { label: 'Uploaded',     sub: 'CSV imported' },
+                  { label: 'Processing',   sub: 'Categories applied' },
+                  { label: 'Needs Review', sub: `${untaggedAll} untagged` },
+                  { label: 'Complete',     sub: 'All transactions tagged' },
+                ]
+                return (
+                  <div className="bg-white rounded-xl border border-gray-100 px-6 py-4 mb-5 flex items-start">
+                    {steps.map((s, i) => {
+                      const done   = i < activeStep
+                      const active = i === activeStep
+                      return (
+                        <Fragment key={s.label}>
+                          <div className="flex flex-col items-center gap-1 shrink-0">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                              done   ? 'bg-teal-500 text-white' :
+                              active ? 'bg-[#0D7377] text-white' :
+                              'bg-gray-100 text-gray-400'
+                            }`}>
+                              {done ? '✓' : i + 1}
+                            </div>
+                            <span className={`text-[11px] font-semibold whitespace-nowrap ${active ? 'text-gray-800' : done ? 'text-teal-600' : 'text-gray-400'}`}>{s.label}</span>
+                            {active && <span className="text-[10px] text-gray-400 whitespace-nowrap">{s.sub}</span>}
+                          </div>
+                          {i < steps.length - 1 && (
+                            <div className={`flex-1 h-px mx-3 mt-3.5 ${i < activeStep ? 'bg-teal-400' : 'bg-gray-200'}`} />
+                          )}
+                        </Fragment>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
 
               {/* Upload History */}
               <div className="rounded-xl border border-gray-300 mb-5 overflow-hidden">
