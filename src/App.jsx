@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
 import EmptyState from './components/EmptyState.jsx'
 import HelpTip from './components/HelpTip.jsx'
+import Privacy from './pages/Privacy.jsx'
 import { TrendingUp, TrendingDown, PiggyBank, Percent, CalendarDays, BarChart3, Wallet, ArrowUpRight, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie, ResponsiveContainer } from 'recharts'
 
@@ -4076,6 +4077,7 @@ export default function App() {
     annual:           'Annual Summary',
     'year-comparison': 'Year Comparison',
     settings:          'Settings',
+    privacy:           'Privacy',
   }
 
   if (user === undefined || loading) return <LoadingSpinner />
@@ -4132,7 +4134,7 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="px-5 py-4 border-t border-white/10">
+        <div className="px-5 py-4 border-t border-white/10 space-y-2">
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
             <span className="text-xs text-white/40 truncate flex-1 min-w-0">{user.email}</span>
@@ -4144,6 +4146,12 @@ export default function App() {
               Sign out
             </button>
           </div>
+          <button
+            onClick={() => setActivePage('privacy')}
+            className="text-[10px] text-white/25 hover:text-white/60 transition-colors"
+          >
+            Privacy
+          </button>
         </div>
       </aside>
 
@@ -4281,7 +4289,8 @@ export default function App() {
 
               {/* Privacy note */}
               <p className="text-xs text-gray-400 text-center mt-3 mb-5">
-                Your CSV is used only to categorize and summarize transactions. You can delete your data at any time.
+                Your CSV is used only to categorize and summarize transactions. Raw data is not shared.{' '}
+                You can delete your history at any time.
               </p>
 
               {/* Upload state banner */}
@@ -4494,6 +4503,8 @@ export default function App() {
               onClearTransactions={() => { setTransactions([]); setDedupKeyCache(new Set()); setCsvUploads([]) }}
             />
           )}
+
+          {activePage === 'privacy' && <Privacy />}
 
         </main>
       </div>
