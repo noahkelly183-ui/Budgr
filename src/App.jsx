@@ -1541,6 +1541,9 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
     return acc
   }, {})
 
+  const [breakdownOpen, setBreakdownOpen] = useState(false)
+  const monthLabel = MONTHS.find(m => m.id === selectedMonth)?.label || ''
+
   const totalDebits  = debits.length + savingsTxns.length
   const monthlyScore = calcMonthlyScore({ savingsRate, txnSpent, monthlyNet, fixedMonthlyTotal, totalSpent, untagged, totalDebits })
   const scoreColor   = monthlyScore === null ? '#6B7280'
@@ -1613,178 +1616,122 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
           </div>
         )}
 
-        {/* KPI cards */}
-        <div className="grid grid-cols-4 gap-6 mb-6">
-
-          <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center">
-                <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Net Income</p>
-                <HelpTip text="Your take-home pay after tax and deductions." />
-              </div>
-              <TrendingUp className="w-4 h-4 text-white/20" />
-            </div>
-            <p className={`text-3xl font-bold tabular-nums ${monthlyNet > 0 ? 'text-teal-400' : 'text-white/20'}`}>
-              {monthlyNet > 0 ? fmt(monthlyNet) : '—'}
-            </p>
-            <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: '#0D7377' }} />
+      {/* Monthly Net Income card */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
+        <div className="flex items-start justify-between p-6 pb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">Monthly Net Income</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{monthLabel} {selectedYear}</p>
           </div>
-
-          <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Total Expenses</p>
-              <TrendingDown className="w-4 h-4 text-white/20" />
-            </div>
-            <p className={`text-3xl font-bold tabular-nums ${totalSpent > 0 ? 'text-red-400' : 'text-white/20'}`}>
-              {totalSpent > 0 ? fmt(totalSpent) : '—'}
-            </p>
-            <div className="mt-3 h-[3px] w-7 rounded-full bg-red-400/70" />
-          </div>
-
-          <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings</p>
-              <PiggyBank className="w-4 h-4 text-white/20" />
-            </div>
-            <p className={`text-3xl font-bold tabular-nums ${totalSavings > 0 ? 'text-teal-400' : 'text-white/20'}`}>
-              {totalSavings > 0 ? fmt(totalSavings) : '—'}
-            </p>
-            <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: totalSavings > 0 ? '#14A085' : '#374151' }} />
-          </div>
-
-          <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center">
-                <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings Rate</p>
-                <HelpTip text="How much of your income you kept instead of spending." />
-              </div>
-              <Percent className="w-4 h-4 text-white/20" />
-            </div>
-            <p className={`text-3xl font-bold tabular-nums ${
-              savingsRate === null ? 'text-white/20'
-              : savingsRate >= 20 ? 'text-teal-400'
-              : savingsRate >= 10 ? 'text-amber-400'
-              : 'text-red-400'
-            }`}>
-              {savingsRate === null ? '—' : savingsRate.toFixed(1) + '%'}
-            </p>
-            <div className="mt-3 h-[3px] w-7 rounded-full"
-              style={{ backgroundColor: savingsRate === null ? '#374151' : savingsRate >= 20 ? '#0D7377' : savingsRate >= 10 ? '#F59E0B' : '#EF4444' }} />
-          </div>
-
+          <p className={`text-3xl font-bold tabular-nums ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+            {monthlyNet > 0 ? fmt(monthlyNet) : salary.gross === 0 ? 'Add salary →' : '—'}
+          </p>
         </div>
 
-      {/* Income statement + Breakdown side by side */}
-      <div className="flex gap-6 items-start mb-6">
-
-        {/* Income statement card */}
-        <div className="flex-1 bg-white rounded-xl border border-gray-100 overflow-hidden">
-
-          <div className="flex items-center justify-between px-5 py-3.5" style={{ backgroundColor: '#F0FDF4' }}>
-            <div className="flex items-center"><span className="text-sm text-gray-600">Net Income</span><HelpTip text="Your take-home pay after tax and deductions." /></div>
-            <span className={`text-sm font-semibold tabular-nums ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-              {monthlyNet > 0 ? fmt(monthlyNet) : salary.gross === 0 ? 'Add salary →' : '—'}
-            </span>
-          </div>
-
-          <div className="border-t border-gray-200" />
-
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
-            <div className="flex items-center"><span className="text-sm text-gray-600">Fixed Costs</span><HelpTip text="Recurring monthly expenses like rent or subscriptions." /></div>
-            <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
-          </div>
-
-          <div className="flex items-center justify-between px-5 py-3.5">
-            <div className="flex items-center"><span className="text-sm text-gray-600">Variable Spending</span><HelpTip text="Day-to-day expenses that vary each month." /></div>
-            <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
-          </div>
-
-          <div className="flex items-center justify-between px-5 py-3.5 border-t-2 border-gray-200">
-            <span className="text-sm font-semibold text-gray-700">Total Expenses</span>
-            <span className="text-sm font-bold text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
-          </div>
-
-          <div className="border-t border-gray-200" />
-
-          {/* Savings entries breakdown */}
-          {Object.entries(savingsByCat).map(([cat, amount]) => (
-            <div key={cat} className="flex items-center justify-between px-5 py-2.5 border-b border-gray-50" style={{ backgroundColor: '#F0FDF9' }}>
-              <span className="text-xs font-medium text-[#0D7377]">{cat}</span>
-              <span className="text-xs font-semibold text-[#0D7377] tabular-nums">{fmt(amount)}</span>
-            </div>
-          ))}
-
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
-            <span className="text-sm font-semibold text-gray-700">Total Savings</span>
-            <span className={`text-sm font-bold tabular-nums ${totalSavings > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
-              {totalSavings > 0 ? fmt(totalSavings) : '—'}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between px-5 py-3.5">
-            <div className="flex items-center"><span className="text-sm text-gray-500">Savings Rate</span><HelpTip text="How much of your income you kept instead of spending." /></div>
-            <span className={`text-sm font-semibold tabular-nums ${
-              savingsRate === null ? 'text-gray-300'
-              : savingsRate >= 20 ? 'text-[#0D7377]'
-              : savingsRate >= 10 ? 'text-amber-500'
-              : 'text-red-400'
-            }`}>
-              {savingsRate === null ? '—' : savingsRate.toFixed(1) + '%'}
-            </span>
-          </div>
-
-        </div>
-
-        {/* Spending breakdown card — alongside income statement */}
-        <div className="w-64 shrink-0 bg-white rounded-xl border border-gray-100 p-6">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Spending Breakdown</p>
-
-          <div className="space-y-3">
-            {CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(group => {
-              const txnTotal   = group.cats.reduce((s, cat) =>
-                s + debits.filter(t => t.category === cat).reduce((ss, t) => ss + t.amount, 0), 0
-              )
-              const fixedTotal = fixedCosts
-                .filter(c => group.cats.includes(c.category))
-                .reduce((s, c) => s + monthlyRate(c), 0)
-              const groupTotal = txnTotal + fixedTotal
-              if (groupTotal === 0) return null
-              const pct = totalSpent > 0 ? (groupTotal / totalSpent) * 100 : 0
-              return (
-                <div key={group.name}>
-                  <div className="flex justify-between items-center text-xs mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.hex }} />
-                      <span className="text-gray-600">{group.name}</span>
+        {(debits.length > 0 || fixedCosts.length > 0) && (
+          <div className="border-t border-gray-100 px-6 py-4">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Spending Breakdown</p>
+            <div className="space-y-3">
+              {CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(group => {
+                const txnTotal   = group.cats.reduce((s, cat) =>
+                  s + debits.filter(t => t.category === cat).reduce((ss, t) => ss + t.amount, 0), 0)
+                const fixedTotal = fixedCosts
+                  .filter(c => group.cats.includes(c.category))
+                  .reduce((s, c) => s + monthlyRate(c), 0)
+                const groupTotal = txnTotal + fixedTotal
+                if (groupTotal === 0) return null
+                const pct = totalSpent > 0 ? (groupTotal / totalSpent) * 100 : 0
+                return (
+                  <div key={group.name}>
+                    <div className="flex justify-between items-center text-xs mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.hex }} />
+                        <span className="text-gray-600">{group.name}</span>
+                      </div>
+                      <span className="font-medium text-gray-800 tabular-nums">{fmt(groupTotal)}</span>
                     </div>
-                    <span className="font-medium text-gray-800 tabular-nums">{fmt(groupTotal)}</span>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: group.hex }} />
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: group.hex }} />
-                  </div>
-                </div>
-              )
-            })}
-            {debits.length === 0 && fixedCosts.length === 0 && (
-              <p className="text-xs text-gray-300 text-center py-2">No spending this month</p>
-            )}
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5">
-            <div className="flex justify-between text-xs font-semibold pt-1 border-t border-gray-100">
-              <span className="text-gray-700">Total</span>
+                )
+              })}
+            </div>
+            <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between text-xs font-semibold">
+              <span className="text-gray-700">Total Expenses</span>
               <span className="text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
             </div>
             {totalSavings > 0 && (
-              <div className="flex justify-between text-xs font-semibold text-teal-600">
+              <div className="flex justify-between text-xs font-semibold text-teal-600 mt-1.5">
                 <span>Savings</span>
                 <span className="tabular-nums">{fmt(totalSavings)}</span>
               </div>
             )}
           </div>
-        </div>
+        )}
+      </div>
 
-      </div>{/* end income statement + breakdown row */}
+      {/* Variable, Fixed & Savings Breakdown — collapsible */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
+        <button
+          onClick={() => setBreakdownOpen(o => !o)}
+          className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-gray-50 transition-colors"
+        >
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Variable, Fixed &amp; Savings Breakdown</p>
+            <p className="text-xs text-gray-400 mt-0.5">{monthLabel} {selectedYear}</p>
+          </div>
+          <svg className={`w-4 h-4 text-gray-400 transition-transform ${breakdownOpen ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {breakdownOpen && (
+          <div className="px-6 pb-6 border-t border-gray-50">
+            <div className="pt-2 divide-y divide-gray-50">
+              <div className="flex items-center justify-between py-3.5">
+                <div className="flex items-center"><span className="text-sm text-gray-600">Fixed Costs</span><HelpTip text="Recurring monthly expenses like rent or subscriptions." /></div>
+                <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between py-3.5">
+                <div className="flex items-center"><span className="text-sm text-gray-600">Variable Spending</span><HelpTip text="Day-to-day expenses that vary each month." /></div>
+                <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between py-3.5 border-t-2 border-gray-200">
+              <span className="text-sm font-semibold text-gray-700">Total Expenses</span>
+              <span className="text-sm font-bold text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
+            </div>
+
+            <div className="border-t border-gray-100 pt-1">
+              {Object.entries(savingsByCat).map(([cat, amount]) => (
+                <div key={cat} className="flex items-center justify-between py-2.5 border-b border-gray-50" style={{ backgroundColor: '#F0FDF9' }}>
+                  <span className="text-xs font-medium text-[#0D7377]">{cat}</span>
+                  <span className="text-xs font-semibold text-[#0D7377] tabular-nums">{fmt(amount)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between py-3.5 border-b border-gray-50">
+                <span className="text-sm font-semibold text-gray-700">Total Savings</span>
+                <span className={`text-sm font-bold tabular-nums ${totalSavings > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
+                  {totalSavings > 0 ? fmt(totalSavings) : '—'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-3.5">
+                <div className="flex items-center"><span className="text-sm text-gray-500">Savings Rate</span><HelpTip text="How much of your income you kept instead of spending." /></div>
+                <span className={`text-sm font-semibold tabular-nums ${
+                  savingsRate === null ? 'text-gray-300'
+                  : savingsRate >= 20 ? 'text-[#0D7377]'
+                  : savingsRate >= 10 ? 'text-amber-500'
+                  : 'text-red-400'
+                }`}>
+                  {savingsRate === null ? '—' : savingsRate.toFixed(1) + '%'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {untagged > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4 text-xs text-amber-700 flex items-center gap-2">
