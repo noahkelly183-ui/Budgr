@@ -1618,16 +1618,16 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
       {/* Monthly Income Statement */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
 
-        {/* Card header */}
-        <div className="px-6 py-4 border-b border-gray-100">
+        {/* Header */}
+        <div className="px-5 py-3 border-b border-gray-100 flex items-baseline justify-between">
           <h2 className="text-sm font-semibold text-gray-800">Monthly Income Statement</h2>
-          <p className="text-xs text-gray-400 mt-0.5">{monthLabel} {selectedYear}</p>
+          <p className="text-xs text-gray-400">{monthLabel} {selectedYear}</p>
         </div>
 
         {/* INCOME */}
-        <div className="px-6 pt-4 pb-3">
-          <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-2">Income</p>
-          <div className="flex justify-between items-center py-2">
+        <div className="px-5 py-3">
+          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Income</p>
+          <div className="flex justify-between items-center py-1.5">
             <div className="flex items-center">
               <span className="text-sm text-gray-600">Net Take-Home Pay</span>
               <HelpTip text="Your take-home pay after tax and deductions." />
@@ -1639,89 +1639,96 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
         </div>
 
         {/* EXPENSES */}
-        <div className="px-6 pt-3 pb-4 border-t border-gray-100">
-          <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-2">Expenses</p>
-          <div className="divide-y divide-gray-50">
-            <div className="flex justify-between items-center py-2.5">
-              <div className="flex items-center">
-                <span className="text-sm text-gray-600">Fixed Costs</span>
-                <HelpTip text="Recurring monthly expenses like rent or subscriptions." />
-              </div>
-              <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
-            </div>
-            <div className="flex justify-between items-center py-2.5">
-              <div className="flex items-center">
-                <span className="text-sm text-gray-600">Variable Spending</span>
-                <HelpTip text="Day-to-day expenses that vary each month." />
-              </div>
-              <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
-            </div>
-          </div>
+        <div className="px-5 py-3 border-t border-gray-100">
+          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Expenses</p>
 
-          {/* Category breakdown — indented under expenses */}
-          {(debits.length > 0 || fixedCosts.length > 0) && (() => {
-            const groups = CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(group => {
-              const txnTotal   = group.cats.reduce((s, cat) =>
-                s + debits.filter(t => t.category === cat).reduce((ss, t) => ss + t.amount, 0), 0)
-              const fixedTotal = fixedCosts
-                .filter(c => group.cats.includes(c.category))
-                .reduce((s, c) => s + monthlyRate(c), 0)
-              return { ...group, total: txnTotal + fixedTotal }
-            }).filter(g => g.total > 0)
-            if (groups.length === 0) return null
-            return (
-              <div className="mt-3 ml-3 pl-3 border-l-2 border-gray-100 space-y-2.5">
-                {groups.map(g => {
-                  const pct = totalSpent > 0 ? (g.total / totalSpent) * 100 : 0
+          {/* Fixed Costs — individual items */}
+          {fixedCosts.length > 0 ? (
+            <div className="mb-1">
+              <div className="flex justify-between items-center py-1.5">
+                <div className="flex items-center">
+                  <span className="text-sm text-gray-600">Fixed Costs</span>
+                  <HelpTip text="Recurring monthly expenses like rent or subscriptions." />
+                </div>
+                <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
+              </div>
+              <div className="divide-y divide-gray-50 ml-3 border-l border-gray-100 pl-3">
+                {fixedCosts.map(cost => {
+                  const hex = CATEGORY_COLOR[cost.category] || '#9CA3AF'
                   return (
-                    <div key={g.name}>
-                      <div className="flex justify-between items-center text-xs mb-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: g.hex }} />
-                          <span className="text-gray-500">{g.name}</span>
-                        </div>
-                        <span className="text-gray-600 tabular-nums">{fmt(g.total)}</span>
-                      </div>
-                      <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: g.hex }} />
-                      </div>
+                    <div key={cost.id} className="flex items-center gap-2 py-1.5">
+                      <span className="flex-1 text-xs text-gray-500 truncate">{cost.name}</span>
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '18', color: hex }}>
+                        {cost.category}
+                      </span>
+                      <span className="text-xs font-medium text-gray-600 tabular-nums shrink-0 w-16 text-right">{fmt(monthlyRate(cost))}</span>
                     </div>
                   )
                 })}
               </div>
-            )
-          })()}
+            </div>
+          ) : (
+            <div className="flex justify-between items-center py-1.5 mb-1">
+              <div className="flex items-center">
+                <span className="text-sm text-gray-600">Fixed Costs</span>
+                <HelpTip text="Recurring monthly expenses like rent or subscriptions." />
+              </div>
+              <span className="text-sm text-gray-300 tabular-nums">—</span>
+            </div>
+          )}
 
-          <div className="flex justify-between items-center pt-3 mt-3 border-t-2 border-gray-200">
+          {/* Variable Spending — total only */}
+          <div className="flex justify-between items-center py-1.5 border-t border-gray-50">
+            <div className="flex items-center">
+              <span className="text-sm text-gray-600">Variable Spending</span>
+              <HelpTip text="Day-to-day expenses that vary each month." />
+            </div>
+            <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
+          </div>
+
+          <div className="flex justify-between items-center py-2 mt-1 border-t-2 border-gray-200">
             <span className="text-sm font-semibold text-gray-700">Total Expenses</span>
             <span className="text-sm font-bold text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
           </div>
         </div>
 
         {/* SAVINGS */}
-        <div className="px-6 pt-3 pb-5 border-t border-gray-100">
-          <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-2">Savings</p>
-          <div className="divide-y divide-gray-50">
-            {Object.entries(savingsByCat).map(([cat, amount]) => (
-              <div key={cat} className="flex justify-between items-center py-2.5">
-                <span className="text-sm text-gray-600">{cat}</span>
-                <span className="text-sm font-medium tabular-nums" style={{ color: '#0D7377' }}>{fmt(amount)}</span>
+        <div className="px-5 py-3 border-t border-gray-100">
+          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Savings</p>
+
+          {savingsEntries.length > 0 && (
+            <div className="mb-1">
+              <div className="divide-y divide-gray-50">
+                {savingsEntries.map(entry => {
+                  const hex = CATEGORY_COLOR[entry.category] || '#14A085'
+                  return (
+                    <div key={entry.id} className="flex items-center gap-2 py-1.5">
+                      <span className="flex-1 text-xs text-gray-500 truncate">{entry.name}</span>
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '18', color: hex }}>
+                        {entry.category}
+                      </span>
+                      <span className="text-xs font-medium tabular-nums shrink-0 w-16 text-right" style={{ color: '#0D7377' }}>{fmt(monthlyRate(entry))}</span>
+                    </div>
+                  )
+                })}
               </div>
-            ))}
-            {leftover > 0 && (
-              <div className="flex justify-between items-center py-2.5">
-                <span className="text-sm text-gray-400 italic">Surplus</span>
-                <span className="text-sm italic font-medium tabular-nums" style={{ color: '#14A085' }}>{fmt(leftover)}</span>
-              </div>
-            )}
-          </div>
-          <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-gray-200">
+            </div>
+          )}
+
+          {leftover > 0 && (
+            <div className="flex justify-between items-center py-1.5 border-t border-gray-50">
+              <span className="text-sm text-gray-400 italic">Surplus</span>
+              <span className="text-sm italic font-medium tabular-nums" style={{ color: '#14A085' }}>{fmt(leftover)}</span>
+            </div>
+          )}
+
+          <div className="flex justify-between items-center py-2 mt-1 border-t-2 border-gray-200">
             <span className="text-sm font-semibold text-gray-700">Total Savings</span>
             <span className={`text-sm font-bold tabular-nums ${totalSavings > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
               {totalSavings > 0 ? fmt(totalSavings) : '—'}
             </span>
           </div>
-          <div className="flex justify-between items-center pt-2.5">
+          <div className="flex justify-between items-center py-1.5">
             <div className="flex items-center">
               <span className="text-sm text-gray-500">Savings Rate</span>
               <HelpTip text="How much of your income you kept instead of spending." />
@@ -3542,9 +3549,9 @@ export default function App() {
   const [csvUploads, setCsvUploads]         = useState([])
   const [uploadHistoryOpen, setUploadHistoryOpen] = useState(true)
   const [fuzzyPrompt, setFuzzyPrompt]       = useState(null)
-  const [dashVariableOpen, setDashVariableOpen] = useState(true)
-  const [dashFixedOpen, setDashFixedOpen]       = useState(true)
-  const [dashSavingsOpen, setDashSavingsOpen]   = useState(true)
+  const [dashVariableOpen, setDashVariableOpen] = useState(false)
+  const [dashFixedOpen, setDashFixedOpen]       = useState(false)
+  const [dashSavingsOpen, setDashSavingsOpen]   = useState(false)
   const dataLoadedFor   = useRef(null)
   const salaryTimerRef  = useRef(null)
   const csvInputRef     = useRef(null)
