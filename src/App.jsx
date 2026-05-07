@@ -1294,12 +1294,28 @@ function getMonthlyInsight(score, { savingsRate }) {
   return { headline: 'Month needs attention', sub: 'Add salary info and categorise transactions to get your score' }
 }
 
-// ─── InsightsPanel ────────────────────────────────────────────────────────────
+// ─── AnalysisSection (Insights + SpendingLeaks unified) ───────────────────────
 
-function InsightsPanel({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent, fixedMonthlyTotal, totalSavings, savingsRate, savingsEntriesTotal, debits }) {
+function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent, fixedMonthlyTotal, totalSavings, savingsRate, savingsEntriesTotal, debits }) {
+
+  // ── Prior month shared setup ──────────────────────────────────────────────
+  const mIdx         = parseInt(selectedMonth, 10)
+  const priorMIdx    = mIdx === 1 ? 12 : mIdx - 1
+  const priorYear    = mIdx === 1 ? String(parseInt(selectedYear, 10) - 1) : selectedYear
+  const priorMStr    = priorMIdx.toString().padStart(2, '0')
+  const priorMonthName = MONTHS.find(m => m.id === priorMStr)?.label || 'last month'
+
+  const priorDebitsAll = txns.filter(t =>
+    yearMonthOf(t.date) === priorYear + '-' + priorMStr &&
+    t.type === 'debit' &&
+    !EXCLUDE_FROM_TOTALS.has(t.category) &&
+    !isSaving(t.category)
+  )
+  const hasPrior = priorDebitsAll.length > 0
+
+  // ── Insights ──────────────────────────────────────────────────────────────
   const insights = []
 
-  // 1. Savings rate status
   if (savingsRate !== null && monthlyNet > 0) {
     const r = savingsRate.toFixed(0)
     insights.push({
@@ -1315,7 +1331,6 @@ function InsightsPanel({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent
     })
   }
 
-  // 2. Largest variable category
   const varByCat = {}
   for (const t of debits) {
     const cat = t.category || 'Uncategorized'
@@ -1326,25 +1341,17 @@ function InsightsPanel({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent
     const [catName, catAmt] = topCatEntry
     const catPct = Math.round((catAmt / txnSpent) * 100)
     insights.push({
-      label: 'Top Variable Category',
+      label: 'Top Category',
       icon: <TrendingUp className="w-3.5 h-3.5" />,
       body: `${catName} was your biggest variable expense at ${fmt(catAmt)} — ${catPct}% of all variable spending this month.`,
     })
   }
 
-  // 3. Month-over-month savings change (only if prior month has data)
-  const mIdx       = parseInt(selectedMonth, 10)
-  const priorMIdx  = mIdx === 1 ? 12 : mIdx - 1
-  const priorYear  = mIdx === 1 ? String(parseInt(selectedYear, 10) - 1) : selectedYear
-  const priorMStr  = priorMIdx.toString().padStart(2, '0')
-  const priorTxns  = txns.filter(t => yearMonthOf(t.date) === priorYear + '-' + priorMStr)
-  if (priorTxns.length > 0 && monthlyNet > 0) {
-    const priorDebits    = priorTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category) && !isSaving(t.category))
-    const priorTxnSpent  = priorDebits.reduce((s, t) => s + t.amount, 0)
-    const priorLeftover  = Math.max(0, monthlyNet - priorTxnSpent - fixedMonthlyTotal)
-    const priorSavings   = priorLeftover + savingsEntriesTotal
-    const delta          = totalSavings - priorSavings
-    const priorMonthName = MONTHS.find(m => m.id === priorMStr)?.label || ''
+  if (hasPrior && monthlyNet > 0) {
+    const priorTxnSpent = priorDebitsAll.reduce((s, t) => s + t.amount, 0)
+    const priorLeftover = Math.max(0, monthlyNet - priorTxnSpent - fixedMonthlyTotal)
+    const priorSavings  = priorLeftover + savingsEntriesTotal
+    const delta         = totalSavings - priorSavings
     if (Math.abs(delta) > 1) {
       insights.push({
         label: 'vs Last Month',
@@ -1356,96 +1363,41 @@ function InsightsPanel({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent
     }
   }
 
-  if (insights.length === 0) return null
-
-  return (
-    <div className="mt-6">
-      <div className="flex items-center gap-2 mb-3">
-        <Lightbulb className="w-3.5 h-3.5 text-teal-500" />
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Insights</p>
-      </div>
-      <div className="relative">
-        <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-          {insights.map((ins, i) => (
-            <div
-              key={i}
-              className="shrink-0 w-60 bg-white rounded-xl border border-gray-100 px-4 py-4"
-              style={{ borderLeft: '3px solid #0D7377' }}
-            >
-              <div className="flex items-center gap-1.5 mb-2" style={{ color: '#0D7377' }}>
-                {ins.icon}
-                <p className="text-[10px] font-bold uppercase tracking-wider">{ins.label}</p>
-              </div>
-              <p className="text-sm text-gray-600 leading-snug">{ins.body}</p>
-            </div>
-          ))}
-        </div>
-        {insights.length > 2 && (
-          <div className="absolute right-0 top-0 bottom-1 w-10 pointer-events-none rounded-r-xl"
-            style={{ background: 'linear-gradient(to left, #E5E7EB, transparent)' }} />
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── SpendingLeaks ────────────────────────────────────────────────────────────
-
-function SpendingLeaks({ txns, selectedMonth, selectedYear, debits, txnSpent }) {
-  const mIdx      = parseInt(selectedMonth, 10)
-  const priorMIdx = mIdx === 1 ? 12 : mIdx - 1
-  const priorYear = mIdx === 1 ? String(parseInt(selectedYear, 10) - 1) : selectedYear
-  const priorMStr = priorMIdx.toString().padStart(2, '0')
-
-  const priorDebits = txns.filter(t =>
-    yearMonthOf(t.date) === priorYear + '-' + priorMStr &&
-    t.type === 'debit' &&
-    !EXCLUDE_FROM_TOTALS.has(t.category) &&
-    !isSaving(t.category)
-  )
-  const hasPrior = priorDebits.length > 0
+  // ── Spending leaks ────────────────────────────────────────────────────────
   const priorByCat = {}
-  for (const t of priorDebits) {
+  for (const t of priorDebitsAll) {
     const cat = t.category || 'Uncategorized'
     priorByCat[cat] = (priorByCat[cat] || 0) + t.amount
-  }
-
-  const currByCat = {}
-  for (const t of debits) {
-    const cat = t.category || 'Uncategorized'
-    currByCat[cat] = (currByCat[cat] || 0) + t.amount
   }
 
   const leaks = []
   const flagged = new Set()
 
-  // Spike: up >20% AND >$50 vs last month
   if (hasPrior) {
-    for (const [cat, curr] of Object.entries(currByCat)) {
+    for (const [cat, curr] of Object.entries(varByCat)) {
       const prior     = priorByCat[cat] || 0
       const delta     = curr - prior
       const pctChange = prior > 0 ? (delta / prior) * 100 : null
       if (delta > 50 && (pctChange === null || pctChange > 20)) {
-        const chip = prior > 0 ? `+${fmt(delta)}` : `New`
-        const body = prior > 0
-          ? `${fmt(delta)} higher than last month (+${Math.round(pctChange)}%).`
-          : `No spending here last month — ${fmt(curr)} this month.`
-        leaks.push({ cat, type: 'spike', sort: delta, chip, body })
+        leaks.push({
+          cat, sort: delta,
+          chip: prior > 0 ? `+${fmt(delta)}` : 'New',
+          body: prior > 0
+            ? `${fmt(delta)} higher than ${priorMonthName} (+${Math.round(pctChange)}%).`
+            : `No spending here last month — ${fmt(curr)} this month.`,
+        })
         flagged.add(cat)
       }
     }
   }
 
-  // Concentration: >15% of total variable spend
   if (txnSpent > 0) {
-    for (const [cat, curr] of Object.entries(currByCat)) {
+    for (const [cat, curr] of Object.entries(varByCat)) {
       if (flagged.has(cat)) continue
       const share = (curr / txnSpent) * 100
       if (share > 15 && curr > 50) {
         leaks.push({
-          cat,
-          type: 'concentration',
-          sort: curr,
+          cat, sort: curr,
           chip: `${Math.round(share)}%`,
           body: `${Math.round(share)}% of your variable spend this month (${fmt(curr)}).`,
         })
@@ -1456,49 +1408,99 @@ function SpendingLeaks({ txns, selectedMonth, selectedYear, debits, txnSpent }) 
 
   leaks.sort((a, b) => b.sort - a.sort)
 
-  const priorMonthName = MONTHS.find(m => m.id === priorMStr)?.label || 'last month'
+  if (insights.length === 0 && leaks.length === 0 && txnSpent === 0) return null
 
   return (
-    <div className="mt-4 bg-white rounded-xl border border-gray-100 overflow-hidden">
+    <div
+      className="mt-6 rounded-2xl border border-white/[0.07] overflow-hidden"
+      style={{ background: 'linear-gradient(160deg, #0F3460 0%, #1A1A2E 45%, #0D2137 100%)' }}
+    >
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-amber-100/80" style={{ backgroundColor: '#FFFBEB' }}>
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-          <span className="text-sm font-bold text-gray-800">Spending Spikes</span>
-          {hasPrior && (
-            <span className="text-xs text-gray-400 font-normal">vs {priorMonthName}</span>
-          )}
-        </div>
-        {leaks.length > 0 && (
-          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 tabular-nums">
-            {leaks.length} flag{leaks.length !== 1 ? 's' : ''}
-          </span>
-        )}
+      {/* Section header */}
+      <div className="flex items-center gap-2.5 px-6 pt-5 pb-4 border-b border-white/[0.06]">
+        <BarChart3 className="w-4 h-4 text-white/30" />
+        <span className="text-[11px] font-bold text-white/30 uppercase tracking-[0.2em]">Monthly Analysis</span>
       </div>
 
-      {leaks.length === 0 ? (
-        <div className="flex items-center gap-2.5 px-5 py-4">
-          <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0" />
-          <span className="text-sm text-gray-500">No spending spikes this month.</span>
-        </div>
-      ) : (
-        <div className="divide-y divide-gray-50">
-          {leaks.map((l, i) => (
-            <div key={i} className="flex items-start gap-3 px-5 py-3.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 mt-1.5" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 leading-snug">{l.cat}</p>
-                <p className="text-xs text-gray-500 mt-0.5 leading-snug">{l.body}</p>
-              </div>
-              <span className="shrink-0 text-xs font-bold px-2 py-1 rounded-lg tabular-nums"
-                style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
-                {l.chip}
-              </span>
+      <div className="flex min-h-[180px]">
+
+        {/* LEFT — Insights */}
+        <div className="flex-1 p-6 pr-5">
+          <div className="flex items-center gap-1.5 mb-4">
+            <Lightbulb className="w-3 h-3 text-teal-400/70" />
+            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Insights</span>
+          </div>
+
+          {insights.length === 0 ? (
+            <p className="text-xs text-white/25 italic">Add salary details to generate insights.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {insights.map((ins, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl px-4 py-3.5"
+                  style={{ background: 'rgba(255,255,255,0.04)', borderLeft: '2px solid #0D7377' }}
+                >
+                  <div className="flex items-center gap-1.5 mb-2 text-teal-400">
+                    {ins.icon}
+                    <span className="text-[10px] font-bold uppercase tracking-wider">{ins.label}</span>
+                  </div>
+                  <p className="text-xs text-white/55 leading-relaxed">{ins.body}</p>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
+
+        {/* Divider */}
+        <div className="w-px bg-white/[0.06] my-5 shrink-0" />
+
+        {/* RIGHT — Spending Spikes */}
+        <div className="w-72 shrink-0 p-6 pl-5">
+          <div className="flex items-center gap-1.5 mb-4">
+            <AlertTriangle className="w-3 h-3 text-amber-400/70" />
+            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Spending Spikes</span>
+            {hasPrior && (
+              <span className="text-[10px] text-white/20 ml-0.5">vs {priorMonthName}</span>
+            )}
+            {leaks.length > 0 && (
+              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums"
+                style={{ backgroundColor: 'rgba(251,191,36,0.15)', color: '#FCD34D' }}>
+                {leaks.length}
+              </span>
+            )}
+          </div>
+
+          {leaks.length === 0 ? (
+            <div className="flex items-center gap-2 mt-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-teal-400/60 shrink-0" />
+              <span className="text-xs text-white/35">No spending spikes this month.</span>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {leaks.slice(0, 2).map((l, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70 shrink-0 mt-1.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                      <span className="text-sm font-semibold text-white/75 truncate">{l.cat}</span>
+                      <span className="shrink-0 text-[11px] font-bold px-1.5 py-0.5 rounded-md tabular-nums"
+                        style={{ backgroundColor: 'rgba(251,191,36,0.12)', color: '#FCD34D' }}>
+                        {l.chip}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-white/35 leading-snug line-clamp-2">{l.body}</p>
+                  </div>
+                </div>
+              ))}
+              {leaks.length > 2 && (
+                <p className="text-[10px] text-white/25 pl-4">+{leaks.length - 2} more spike{leaks.length - 2 !== 1 ? 's' : ''}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+      </div>
     </div>
   )
 }
@@ -1906,7 +1908,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
           )}
         </div>
 
-      <InsightsPanel
+      <AnalysisSection
         txns={txns}
         selectedMonth={selectedMonth}
         selectedYear={selectedYear}
@@ -1917,14 +1919,6 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
         savingsRate={savingsRate}
         savingsEntriesTotal={savingsEntriesTotal}
         debits={debits}
-      />
-
-      <SpendingLeaks
-        txns={txns}
-        selectedMonth={selectedMonth}
-        selectedYear={selectedYear}
-        debits={debits}
-        txnSpent={txnSpent}
       />
 
     </div>
