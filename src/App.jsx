@@ -1294,6 +1294,109 @@ function getMonthlyInsight(score, { savingsRate }) {
   return { headline: 'Month needs attention', sub: 'Add salary info and categorise transactions to get your score' }
 }
 
+// ─── InsightsPanel ────────────────────────────────────────────────────────────
+
+function InsightsPanel({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent, fixedMonthlyTotal, totalSavings, savingsRate, savingsEntriesTotal, debits }) {
+  const insights = []
+
+  // 1. Savings rate status
+  if (savingsRate !== null && monthlyNet > 0) {
+    const r = savingsRate.toFixed(0)
+    insights.push({
+      label: 'Savings Rate',
+      body: savingsRate >= 20
+        ? `Your savings rate is ${r}% this month — excellent. You're keeping more than 1 in 5 dollars you earn.`
+        : savingsRate >= 10
+          ? `Your savings rate is ${r}% — solid. Most advisors suggest aiming for 20%+ over time.`
+          : savingsRate > 0
+            ? `You saved ${r}% of your income this month. Pushing above 10% will start to build real momentum.`
+            : 'Spending exceeded income this month. Review your variable costs to find room to save.',
+    })
+  }
+
+  // 2. Largest variable category
+  const varByCat = {}
+  for (const t of debits) {
+    const cat = t.category || 'Uncategorized'
+    varByCat[cat] = (varByCat[cat] || 0) + t.amount
+  }
+  const topCatEntry = Object.entries(varByCat).sort((a, b) => b[1] - a[1])[0]
+  if (topCatEntry && txnSpent > 0) {
+    const [catName, catAmt] = topCatEntry
+    const catPct = Math.round((catAmt / txnSpent) * 100)
+    insights.push({
+      label: 'Top Variable Category',
+      body: `${catName} was your biggest variable expense at ${fmt(catAmt)} — ${catPct}% of all variable spending this month.`,
+    })
+  }
+
+  // 3. Fixed costs as % of income
+  if (fixedMonthlyTotal > 0 && monthlyNet > 0) {
+    const fixedPct = Math.round((fixedMonthlyTotal / monthlyNet) * 100)
+    insights.push({
+      label: 'Fixed Cost Ratio',
+      body: fixedPct > 50
+        ? `Fixed costs are ${fixedPct}% of your income — over half. Look for subscriptions or recurring bills you could renegotiate.`
+        : fixedPct >= 30
+          ? `Fixed costs account for ${fixedPct}% of your take-home — within a typical healthy range.`
+          : `Your fixed costs are just ${fixedPct}% of income, leaving solid flexibility for discretionary spending.`,
+    })
+  }
+
+  // 4. Projected annual savings
+  if (totalSavings > 0 && monthlyNet > 0) {
+    const projAnnual = totalSavings * 12
+    const projRate   = Math.round((projAnnual / (monthlyNet * 12)) * 100)
+    insights.push({
+      label: 'Projected Annual Savings',
+      body: `At this month's pace you're on track to save ${fmt(projAnnual)} this year — ${projRate}% of your annual take-home pay.`,
+    })
+  }
+
+  // 5. Month-over-month savings change (only if prior month has data)
+  const mIdx       = parseInt(selectedMonth, 10)
+  const priorMIdx  = mIdx === 1 ? 12 : mIdx - 1
+  const priorYear  = mIdx === 1 ? String(parseInt(selectedYear, 10) - 1) : selectedYear
+  const priorMStr  = priorMIdx.toString().padStart(2, '0')
+  const priorTxns  = txns.filter(t => yearMonthOf(t.date) === priorYear + '-' + priorMStr)
+  if (priorTxns.length > 0 && monthlyNet > 0) {
+    const priorDebits    = priorTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category) && !isSaving(t.category))
+    const priorTxnSpent  = priorDebits.reduce((s, t) => s + t.amount, 0)
+    const priorLeftover  = Math.max(0, monthlyNet - priorTxnSpent - fixedMonthlyTotal)
+    const priorSavings   = priorLeftover + savingsEntriesTotal
+    const delta          = totalSavings - priorSavings
+    const priorMonthName = MONTHS.find(m => m.id === priorMStr)?.label || ''
+    if (Math.abs(delta) > 1) {
+      insights.push({
+        label: 'vs Last Month',
+        body: delta > 0
+          ? `You saved ${fmt(delta)} more than ${priorMonthName}. Good progress — keep the momentum going.`
+          : `You saved ${fmt(Math.abs(delta))} less than ${priorMonthName}. ${topCatEntry ? `${topCatEntry[0]} spending was the biggest driver.` : 'Review variable costs to get back on track.'}`,
+      })
+    }
+  }
+
+  if (insights.length === 0) return null
+
+  return (
+    <div className="mt-6">
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">This Month's Insights</p>
+      <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+        {insights.map((ins, i) => (
+          <div
+            key={i}
+            className="shrink-0 w-60 bg-white rounded-xl border border-gray-100 pl-4 pr-5 py-4"
+            style={{ borderLeft: '3px solid #0D7377' }}
+          >
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{ins.label}</p>
+            <p className="text-sm text-gray-700 leading-snug">{ins.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── MonthlyDashboard ─────────────────────────────────────────────────────────
 
 function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, salary, fixedCosts, savingsEntries, variableOpen, setVariableOpen, fixedOpen, setFixedOpen, savingsOpen, setSavingsOpen }) {
@@ -1696,6 +1799,19 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
             </>
           )}
         </div>
+
+      <InsightsPanel
+        txns={txns}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        monthlyNet={monthlyNet}
+        txnSpent={txnSpent}
+        fixedMonthlyTotal={fixedMonthlyTotal}
+        totalSavings={totalSavings}
+        savingsRate={savingsRate}
+        savingsEntriesTotal={savingsEntriesTotal}
+        debits={debits}
+      />
 
     </div>
   )
