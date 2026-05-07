@@ -1364,6 +1364,19 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
     }
   }
 
+  if (monthlyNet > 0 && fixedMonthlyTotal > 0) {
+    const fixedPct = Math.round((fixedMonthlyTotal / monthlyNet) * 100)
+    insights.push({
+      label: 'Fixed Cost Load',
+      icon: <Wallet className="w-3.5 h-3.5" />,
+      body: fixedPct >= 50
+        ? `Fixed costs take up ${fixedPct}% of your take-home — over half your income is committed before variable spending.`
+        : fixedPct >= 30
+          ? `Fixed costs are ${fixedPct}% of take-home (${fmt(fixedMonthlyTotal)}/mo). That leaves limited room for flexibility.`
+          : `Fixed costs are ${fixedPct}% of take-home — a light load that leaves plenty of room for variable spending.`,
+    })
+  }
+
   // ── Spending leaks ────────────────────────────────────────────────────────
   const priorByCat = {}
   for (const t of priorDebitsAll) {
@@ -1464,12 +1477,6 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
             {hasPrior && (
               <span className="text-[10px] text-white/20 ml-0.5">vs {priorMonthName}</span>
             )}
-            {leaks.length > 0 && (
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums"
-                style={{ backgroundColor: 'rgba(251,191,36,0.15)', color: '#FCD34D' }}>
-                {leaks.length}
-              </span>
-            )}
           </div>
 
           {leaks.length === 0 ? (
@@ -1490,13 +1497,10 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
                         {l.chip}
                       </span>
                     </div>
-                    <p className="text-[11px] text-white/35 leading-snug line-clamp-2">{l.body}</p>
+                    <p className="text-[11px] text-white/35 leading-snug">{l.body}</p>
                   </div>
                 </div>
               ))}
-              {leaks.length > 2 && (
-                <p className="text-[10px] text-white/25 pl-4">+{leaks.length - 2} more spike{leaks.length - 2 !== 1 ? 's' : ''}</p>
-              )}
             </div>
           )}
         </div>
