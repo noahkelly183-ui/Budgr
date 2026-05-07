@@ -1262,10 +1262,10 @@ function calcMonthlyScore({ savingsRate, txnSpent, monthlyNet, fixedMonthlyTotal
   return {
     score: Math.round(srScore + erScore + fvScore + clarityScore),
     components: [
-      { label: 'Savings Rate',  tip: 'How much of your income you kept instead of spending.',  value: Math.round(srScore),      max: 40 },
-      { label: 'Expense Ratio', tip: 'What portion of your income went to expenses.',            value: Math.round(erScore),      max: 20 },
-      { label: 'Cost Balance',  tip: null,                                                        value: Math.round(fvScore),      max: 30 },
-      { label: 'Clarity',       tip: null,                                                        value: Math.round(clarityScore), max: 10 },
+      { label: 'Savings Rate',  tip: 'How much of your income you kept instead of spending.',       value: Math.round(srScore),      max: 40 },
+      { label: 'Expense Ratio', tip: 'What portion of your income went to expenses.',               value: Math.round(erScore),      max: 20 },
+      { label: 'Cost Balance',  tip: 'How well your fixed and variable costs are balanced.',         value: Math.round(fvScore),      max: 30 },
+      { label: 'Clarity',       tip: 'How many of your transactions have been categorised.',         value: Math.round(clarityScore), max: 10 },
     ],
   }
 }
@@ -1948,10 +1948,10 @@ function calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesPr
   return {
     score: Math.round(srScore + erScore + fvScore + clarityScore),
     components: [
-      { label: 'Savings Rate',  tip: 'How much of your income you kept instead of spending.',  value: Math.round(srScore),      max: 40 },
-      { label: 'Expense Ratio', tip: 'What portion of your income went to expenses.',            value: Math.round(erScore),      max: 20 },
-      { label: 'Cost Balance',  tip: null,                                                        value: Math.round(fvScore),      max: 30 },
-      { label: 'Data Coverage', tip: null,                                                        value: Math.round(clarityScore), max: 10 },
+      { label: 'Savings Rate',  tip: 'How much of your income you kept instead of spending.',       value: Math.round(srScore),      max: 40 },
+      { label: 'Expense Ratio', tip: 'What portion of your income went to expenses.',               value: Math.round(erScore),      max: 20 },
+      { label: 'Cost Balance',  tip: 'How well your fixed and variable costs are balanced.',         value: Math.round(fvScore),      max: 30 },
+      { label: 'Data Coverage', tip: 'How many months of transaction data are included.',            value: Math.round(clarityScore), max: 10 },
     ],
   }
 }
