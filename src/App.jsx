@@ -2566,7 +2566,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
 
 // ─── YearComparison ──────────────────────────────────────────────────────────
 
-function YearComparison({ transactions, fixedCosts, savingsEntries, salary, onNavigate }) {
+function YearComparison({ transactions, fixedCosts, savingsEntries, salaries, onNavigate }) {
   function fixedMonthlyForYear(year) {
     return fixedCosts
       .filter(c => !isSaving(c.category) && (!c.year || c.year === year))
@@ -2693,10 +2693,11 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary, onNa
   const currPie = buildPie(currentYear)
   const prevPie = prevYear ? buildPie(prevYear) : []
 
-  // Income breakdown cards
-  const gross    = salary?.gross ?? 0
-  const taxAmt   = gross * ((salary?.taxRate ?? 0) / 100)
-  const dedAmt   = (salary?.deductions ?? 0) * 12
+  // Income breakdown cards — use salary for the currently selected year
+  const currSalary = salaries?.[currentYear] ?? salaries?.global ?? { gross: 0, taxRate: 30, deductions: 0 }
+  const gross    = currSalary.gross ?? 0
+  const taxAmt   = gross * ((currSalary.taxRate ?? 0) / 100)
+  const dedAmt   = (currSalary.deductions ?? 0) * 12
   function pctOf(val) { return gross > 0 ? (val / gross) * 100 : null }
   function annualise(ym) {
     if (!ym) return null
@@ -3552,7 +3553,7 @@ export default function App() {
   const [selectedYear, setSelectedYear]     = useState(APP_YEAR)
   const [dragging, setDragging]             = useState(false)
   const [toast, setToast]                   = useState(null)
-  const [salary, setSalary]                 = useState({ gross: 0, taxRate: 30, deductions: 0, extraIncome: 0 })
+  const [salaries, setSalaries]             = useState({})
   const [categoryMemory, setCategoryMemory] = useState({})
   const [transactions, setTransactions]     = useState([])
   const [fixedCosts, setFixedCosts]         = useState([])
@@ -3596,7 +3597,7 @@ export default function App() {
           supabase.from('transactions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
           supabase.from('category_memory').select('*').eq('user_id', user.id),
           supabase.from('fixed_costs').select('*').eq('user_id', user.id),
-          supabase.from('salary_settings').select('*').eq('user_id', user.id).limit(1),
+          supabase.from('salary_settings').select('*').eq('user_id', user.id),
           supabase.from('custom_tags').select('*').eq('user_id', user.id),
         ])
         const storedUploads = JSON.parse(localStorage.getItem(`csvUploads_${user.id}`) || '[]')
@@ -3641,14 +3642,18 @@ export default function App() {
           setCustomTags(tagsRes.data.map(r => ({ id: r.id, category: r.category, tag: r.tag })))
         }
 
-        const salaryRow = salaryRes.data?.[0]
-        if (salaryRow) {
-          setSalary({
-            gross: salaryRow.gross_salary ?? 0,
-            taxRate: salaryRow.tax_rate ?? 30,
-            deductions: salaryRow.monthly_deductions ?? 0,
-            extraIncome: salaryRow.extra_income ?? 0,
-          })
+        if (salaryRes.data?.length) {
+          const map = {}
+          for (const row of salaryRes.data) {
+            const key = row.year || 'global'
+            map[key] = {
+              gross: row.gross_salary ?? 0,
+              taxRate: row.tax_rate ?? 30,
+              deductions: row.monthly_deductions ?? 0,
+              extraIncome: row.extra_income ?? 0,
+            }
+          }
+          setSalaries(map)
         }
 
       } catch (err) {
@@ -4021,15 +4026,23 @@ export default function App() {
   }
 
   function handleSalaryChange(next) {
-    setSalary(next)
+    const yearForSave = selectedYear
+    setSalaries(prev => ({ ...prev, [yearForSave]: next }))
     clearTimeout(salaryTimerRef.current)
     salaryTimerRef.current = setTimeout(async () => {
-      const payload     = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0 }
-      const payloadSafe = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions }
+      const payload     = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0, year: yearForSave }
+      const payloadSafe = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, year: yearForSave }
 
-      const { data: existing, error: selectErr } = await supabase
-        .from('salary_settings').select('id').eq('user_id', user.id).limit(1)
-      if (selectErr) { console.error('[budgr] salary save failed:', selectErr); return }
+      // Look for an existing row scoped to this year
+      let { data: existing, error: selectErr } = await supabase
+        .from('salary_settings').select('id').eq('user_id', user.id).eq('year', yearForSave).limit(1)
+
+      // If year column doesn't exist on the table yet, fall back to single-row behavior
+      if (selectErr) {
+        ;({ data: existing, error: selectErr } = await supabase
+          .from('salary_settings').select('id').eq('user_id', user.id).limit(1))
+        if (selectErr) { console.error('[budgr] salary save failed:', selectErr); return }
+      }
 
       let error
       if (existing?.length) {
@@ -4043,7 +4056,8 @@ export default function App() {
     }, 600)
   }
 
-  const annualNet         = salary.gross > 0
+  const salary             = salaries[selectedYear] ?? { gross: 0, taxRate: 30, deductions: 0, extraIncome: 0 }
+  const annualNet          = salary.gross > 0
     ? salary.gross * (1 - salary.taxRate / 100) - salary.deductions * 12
     : 0
   const selectedMonthLabel = MONTHS.find(m => m.id === selectedMonth)?.label || ''
@@ -4416,6 +4430,7 @@ export default function App() {
 
           {activePage === 'salary' && (
             <SalaryPage
+              key={selectedYear}
               salary={salary}
               onSalaryChange={handleSalaryChange}
               transactions={transactions}
@@ -4474,7 +4489,7 @@ export default function App() {
               transactions={transactions}
               fixedCosts={fixedCosts}
               savingsEntries={savingsEntries}
-              salary={salary}
+              salaries={salaries}
               onNavigate={setActivePage}
             />
           )}
