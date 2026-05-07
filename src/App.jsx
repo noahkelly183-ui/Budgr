@@ -1616,135 +1616,117 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
         )}
 
       {/* Monthly Income Statement */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
+      {(() => {
+        // Variable spending grouped by category, sorted by amount desc
+        const varByCat = {}
+        for (const t of debits) {
+          const cat = t.category || 'Uncategorized'
+          varByCat[cat] = (varByCat[cat] || 0) + t.amount
+        }
+        const varRows = Object.entries(varByCat)
+          .sort((a, b) => b[1] - a[1])
+          .map(([cat, amt]) => ({ name: cat, amount: amt, hex: CATEGORY_COLOR[cat] || '#9CA3AF' }))
 
-        {/* Header */}
-        <div className="px-5 py-3 border-b border-gray-100 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold text-gray-800">Monthly Income Statement</h2>
-          <p className="text-xs text-gray-400">{monthLabel} {selectedYear}</p>
-        </div>
+        const fixedRows = fixedCosts.map(c => ({
+          name: c.name, amount: monthlyRate(c), hex: CATEGORY_COLOR[c.category] || '#9CA3AF',
+        }))
 
-        {/* INCOME */}
-        <div className="px-5 py-3">
-          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Income</p>
-          <div className="flex justify-between items-center py-1.5">
-            <div className="flex items-center">
-              <span className="text-sm text-gray-600">Net Take-Home Pay</span>
-              <HelpTip text="Your take-home pay after tax and deductions." />
-            </div>
-            <span className={`text-sm font-semibold tabular-nums ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-              {monthlyNet > 0 ? fmt(monthlyNet) : salary.gross === 0 ? 'Add salary →' : '—'}
-            </span>
+        const savingsRows = savingsEntries.map(e => ({
+          name: e.name, amount: monthlyRate(e), hex: CATEGORY_COLOR[e.category] || '#14A085',
+        }))
+
+        // Shared row renderer — identical format for all three sections
+        const Row = ({ name, amount, hex }) => (
+          <div className="flex items-center gap-2.5 py-1.5">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: hex }} />
+            <span className="flex-1 text-sm text-gray-600 truncate">{name}</span>
+            <span className="text-sm font-medium text-gray-700 tabular-nums">{fmt(amount)}</span>
           </div>
-        </div>
+        )
 
-        {/* EXPENSES */}
-        <div className="px-5 py-3 border-t border-gray-100">
-          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Expenses</p>
+        return (
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
 
-          {/* Fixed Costs — individual items */}
-          {fixedCosts.length > 0 ? (
-            <div className="mb-1">
+            {/* Header */}
+            <div className="px-5 py-3 border-b border-gray-100 flex items-baseline justify-between">
+              <h2 className="text-sm font-semibold text-gray-800">Monthly Income Statement</h2>
+              <p className="text-xs text-gray-400">{monthLabel} {selectedYear}</p>
+            </div>
+
+            {/* NET INCOME */}
+            <div className="px-5 py-3">
+              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Net Income</p>
               <div className="flex justify-between items-center py-1.5">
-                <div className="flex items-center">
-                  <span className="text-sm text-gray-600">Fixed Costs</span>
-                  <HelpTip text="Recurring monthly expenses like rent or subscriptions." />
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-gray-700">Net Take-Home Pay</span>
+                  <HelpTip text="Your take-home pay after tax and deductions." />
                 </div>
-                <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
-              </div>
-              <div className="divide-y divide-gray-50 ml-3 border-l border-gray-100 pl-3">
-                {fixedCosts.map(cost => {
-                  const hex = CATEGORY_COLOR[cost.category] || '#9CA3AF'
-                  return (
-                    <div key={cost.id} className="flex items-center gap-2 py-1.5">
-                      <span className="flex-1 text-xs text-gray-500 truncate">{cost.name}</span>
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '18', color: hex }}>
-                        {cost.category}
-                      </span>
-                      <span className="text-xs font-medium text-gray-600 tabular-nums shrink-0 w-16 text-right">{fmt(monthlyRate(cost))}</span>
-                    </div>
-                  )
-                })}
+                <span className={`text-sm font-semibold tabular-nums ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {monthlyNet > 0 ? fmt(monthlyNet) : salary.gross === 0 ? 'Add salary →' : '—'}
+                </span>
               </div>
             </div>
-          ) : (
-            <div className="flex justify-between items-center py-1.5 mb-1">
-              <div className="flex items-center">
-                <span className="text-sm text-gray-600">Fixed Costs</span>
-                <HelpTip text="Recurring monthly expenses like rent or subscriptions." />
+
+            {/* FIXED COSTS */}
+            <div className="px-5 py-3 border-t border-gray-100">
+              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Fixed Costs</p>
+              {fixedRows.length > 0
+                ? fixedRows.map((r, i) => <Row key={i} {...r} />)
+                : <p className="text-xs text-gray-300 py-1.5">No fixed costs set up</p>
+              }
+            </div>
+
+            {/* VARIABLE COSTS */}
+            <div className="px-5 py-3 border-t border-gray-100">
+              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Variable Costs</p>
+              {varRows.length > 0
+                ? varRows.map((r, i) => <Row key={i} {...r} />)
+                : <p className="text-xs text-gray-300 py-1.5">No variable spending this month</p>
+              }
+            </div>
+
+            {/* SAVINGS */}
+            <div className="px-5 py-3 border-t border-gray-100">
+              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Savings</p>
+              {savingsRows.length > 0
+                ? savingsRows.map((r, i) => <Row key={i} {...r} />)
+                : <p className="text-xs text-gray-300 py-1.5">No savings allocations set up</p>
+              }
+            </div>
+
+            {/* TOTALS FOOTER */}
+            <div className="px-5 py-3 border-t-2 border-gray-200 space-y-1.5">
+              {leftover > 0 && (
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-sm text-gray-500">Surplus</span>
+                  <span className="text-sm font-medium tabular-nums" style={{ color: '#14A085' }}>{fmt(leftover)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center py-1">
+                <span className="text-sm font-semibold text-gray-700">Total Savings</span>
+                <span className={`text-sm font-bold tabular-nums ${totalSavings > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
+                  {totalSavings > 0 ? fmt(totalSavings) : '—'}
+                </span>
               </div>
-              <span className="text-sm text-gray-300 tabular-nums">—</span>
-            </div>
-          )}
-
-          {/* Variable Spending — total only */}
-          <div className="flex justify-between items-center py-1.5 border-t border-gray-50">
-            <div className="flex items-center">
-              <span className="text-sm text-gray-600">Variable Spending</span>
-              <HelpTip text="Day-to-day expenses that vary each month." />
-            </div>
-            <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
-          </div>
-
-          <div className="flex justify-between items-center py-2 mt-1 border-t-2 border-gray-200">
-            <span className="text-sm font-semibold text-gray-700">Total Expenses</span>
-            <span className="text-sm font-bold text-gray-900 tabular-nums">{fmt(totalSpent)}</span>
-          </div>
-        </div>
-
-        {/* SAVINGS */}
-        <div className="px-5 py-3 border-t border-gray-100">
-          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Savings</p>
-
-          {savingsEntries.length > 0 && (
-            <div className="mb-1">
-              <div className="divide-y divide-gray-50">
-                {savingsEntries.map(entry => {
-                  const hex = CATEGORY_COLOR[entry.category] || '#14A085'
-                  return (
-                    <div key={entry.id} className="flex items-center gap-2 py-1.5">
-                      <span className="flex-1 text-xs text-gray-500 truncate">{entry.name}</span>
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '18', color: hex }}>
-                        {entry.category}
-                      </span>
-                      <span className="text-xs font-medium tabular-nums shrink-0 w-16 text-right" style={{ color: '#0D7377' }}>{fmt(monthlyRate(entry))}</span>
-                    </div>
-                  )
-                })}
+              <div className="flex justify-between items-center py-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-gray-500">Savings Rate</span>
+                  <HelpTip text="How much of your income you kept instead of spending." />
+                </div>
+                <span className={`text-sm font-semibold tabular-nums ${
+                  savingsRate === null ? 'text-gray-300'
+                  : savingsRate >= 20 ? 'text-[#0D7377]'
+                  : savingsRate >= 10 ? 'text-amber-500'
+                  : 'text-red-400'
+                }`}>
+                  {savingsRate === null ? '—' : savingsRate.toFixed(1) + '%'}
+                </span>
               </div>
             </div>
-          )}
 
-          {leftover > 0 && (
-            <div className="flex justify-between items-center py-1.5 border-t border-gray-50">
-              <span className="text-sm text-gray-400 italic">Surplus</span>
-              <span className="text-sm italic font-medium tabular-nums" style={{ color: '#14A085' }}>{fmt(leftover)}</span>
-            </div>
-          )}
-
-          <div className="flex justify-between items-center py-2 mt-1 border-t-2 border-gray-200">
-            <span className="text-sm font-semibold text-gray-700">Total Savings</span>
-            <span className={`text-sm font-bold tabular-nums ${totalSavings > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
-              {totalSavings > 0 ? fmt(totalSavings) : '—'}
-            </span>
           </div>
-          <div className="flex justify-between items-center py-1.5">
-            <div className="flex items-center">
-              <span className="text-sm text-gray-500">Savings Rate</span>
-              <HelpTip text="How much of your income you kept instead of spending." />
-            </div>
-            <span className={`text-sm font-semibold tabular-nums ${
-              savingsRate === null ? 'text-gray-300'
-              : savingsRate >= 20 ? 'text-[#0D7377]'
-              : savingsRate >= 10 ? 'text-amber-500'
-              : 'text-red-400'
-            }`}>
-              {savingsRate === null ? '—' : savingsRate.toFixed(1) + '%'}
-            </span>
-          </div>
-        </div>
-
-      </div>
+        )
+      })()}
 
       {untagged > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4 text-xs text-amber-700 flex items-center gap-2">
