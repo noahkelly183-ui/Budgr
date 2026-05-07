@@ -2788,7 +2788,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary, onNa
               <p className="text-sm font-semibold text-gray-800">Income Breakdown</p>
               <p className="text-xs text-gray-400 mt-0.5">Each value as % of gross income ({fmt(gross)} / yr)</p>
             </div>
-            {prevYear && <p className="text-[10px] text-gray-400">Solid bar = {currentYear} · faded = {prevYear}</p>}
+            {prevYear && <p className="text-[10px] text-gray-400">Each value as % of gross · {currentYear} vs {prevYear}</p>}
           </div>
           <div className="grid grid-cols-6 gap-3">
             {compCards.map(card => {
@@ -2796,12 +2796,12 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary, onNa
               const delta  = !card.hideYoY && card.prevPct !== null && card.pct !== null ? card.pct - card.prevPct : null
               const isGood = delta === null ? null : (card.invert ? delta < 0 : delta > 0)
               return (
-                <div key={card.label} className="bg-gray-50 rounded-xl border border-gray-100 p-4 flex flex-col">
-                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest mb-2 leading-tight">{card.label}</p>
-                  <p className="text-2xl font-bold tabular-nums" style={{ color: hasPct ? card.color : '#D1D5DB' }}>
+                <div key={card.label} className="bg-gray-50 rounded-xl border border-gray-100 p-4 flex flex-col gap-1">
+                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest leading-tight">{card.label}</p>
+                  <p className="text-3xl font-bold tabular-nums mt-1" style={{ color: hasPct ? card.color : '#D1D5DB' }}>
                     {hasPct ? card.pct.toFixed(1) + '%' : '—'}
                   </p>
-                  <div className="mt-1.5 min-h-[16px]">
+                  <div className="min-h-[16px]">
                     {delta !== null ? (
                       <span className={`text-[10px] font-semibold flex items-center gap-0.5 ${isGood ? 'text-[#14A085]' : 'text-red-400'}`}>
                         <span>{delta > 0 ? '▲' : '▼'}</span>
@@ -2810,16 +2810,6 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salary, onNa
                     ) : card.note ? (
                       <span className="text-[10px] text-gray-300">{card.note}</span>
                     ) : null}
-                  </div>
-                  <div className="mt-auto pt-3">
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, hasPct ? card.pct : 0)}%`, backgroundColor: card.color }} />
-                    </div>
-                    {prevYear && !card.hideYoY && card.prevPct !== null && (
-                      <div className="h-1 bg-gray-50 rounded-full overflow-hidden mt-1 opacity-40">
-                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, card.prevPct)}%`, backgroundColor: card.color }} />
-                      </div>
-                    )}
                   </div>
                 </div>
               )
