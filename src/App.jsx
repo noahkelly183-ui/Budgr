@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
 import EmptyState from './components/EmptyState.jsx'
+import HelpTip from './components/HelpTip.jsx'
 import { TrendingUp, TrendingDown, PiggyBank, Percent, CalendarDays, BarChart3, Wallet, ArrowUpRight } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie, ResponsiveContainer } from 'recharts'
 
@@ -1261,10 +1262,10 @@ function calcMonthlyScore({ savingsRate, txnSpent, monthlyNet, fixedMonthlyTotal
   return {
     score: Math.round(srScore + erScore + fvScore + clarityScore),
     components: [
-      { label: 'Savings Rate',   value: Math.round(srScore),    max: 40 },
-      { label: 'Expense Ratio',  value: Math.round(erScore),    max: 20 },
-      { label: 'Cost Balance',   value: Math.round(fvScore),    max: 30 },
-      { label: 'Clarity',        value: Math.round(clarityScore), max: 10 },
+      { label: 'Savings Rate',  tip: 'How much of your income you kept instead of spending.',  value: Math.round(srScore),      max: 40 },
+      { label: 'Expense Ratio', tip: 'What portion of your income went to expenses.',            value: Math.round(erScore),      max: 20 },
+      { label: 'Cost Balance',  tip: null,                                                        value: Math.round(fvScore),      max: 30 },
+      { label: 'Clarity',       tip: null,                                                        value: Math.round(clarityScore), max: 10 },
     ],
   }
 }
@@ -1336,7 +1337,10 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
             <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at 15% 50%, ${scoreColor}18 0%, transparent 60%)` }} />
             <div className="relative flex items-center gap-8">
               <div className="shrink-0 w-56">
-                <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em] mb-4">Monthly Score</p>
+                <div className="flex items-center gap-1 mb-4">
+                  <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em]">Monthly Score</p>
+                  <HelpTip text="A score based on your savings, spending, and consistency." />
+                </div>
                 <div className="flex items-end gap-2 mb-3">
                   <span className="text-[72px] font-black leading-none tabular-nums" style={{ color: scoreColor }}>
                     {monthlyScore.score}
@@ -1358,7 +1362,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
                   return (
                     <div key={c.label}>
                       <div className="flex justify-between items-baseline mb-2">
-                        <span className="text-[11px] font-medium text-white/45">{c.label}</span>
+                        <span className="text-[11px] font-medium text-white/45 flex items-center">{c.label}{c.tip && <HelpTip text={c.tip} />}</span>
                         <span className="text-xs font-bold tabular-nums" style={{ color: scoreColor }}>
                           {c.value}<span className="text-white/20 font-normal">/{c.max}</span>
                         </span>
@@ -1387,7 +1391,10 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
 
           <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Net Income</p>
+              <div className="flex items-center">
+                <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Net Income</p>
+                <HelpTip text="Your take-home pay after tax and deductions." />
+              </div>
               <TrendingUp className="w-4 h-4 text-white/20" />
             </div>
             <p className={`text-3xl font-bold tabular-nums ${monthlyNet > 0 ? 'text-teal-400' : 'text-white/20'}`}>
@@ -1420,7 +1427,10 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
 
           <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings Rate</p>
+              <div className="flex items-center">
+                <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings Rate</p>
+                <HelpTip text="How much of your income you kept instead of spending." />
+              </div>
               <Percent className="w-4 h-4 text-white/20" />
             </div>
             <p className={`text-3xl font-bold tabular-nums ${
@@ -1444,7 +1454,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
         <div className="flex-1 bg-white rounded-xl border border-gray-100 overflow-hidden">
 
           <div className="flex items-center justify-between px-5 py-3.5" style={{ backgroundColor: '#F0FDF4' }}>
-            <span className="text-sm text-gray-600">Net Income</span>
+            <div className="flex items-center"><span className="text-sm text-gray-600">Net Income</span><HelpTip text="Your take-home pay after tax and deductions." /></div>
             <span className={`text-sm font-semibold tabular-nums ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
               {monthlyNet > 0 ? fmt(monthlyNet) : salary.gross === 0 ? 'Add salary →' : '—'}
             </span>
@@ -1453,12 +1463,12 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
           <div className="border-t border-gray-200" />
 
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
-            <span className="text-sm text-gray-600">Fixed Costs</span>
+            <div className="flex items-center"><span className="text-sm text-gray-600">Fixed Costs</span><HelpTip text="Recurring monthly expenses like rent or subscriptions." /></div>
             <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
           </div>
 
           <div className="flex items-center justify-between px-5 py-3.5">
-            <span className="text-sm text-gray-600">Variable Spending</span>
+            <div className="flex items-center"><span className="text-sm text-gray-600">Variable Spending</span><HelpTip text="Day-to-day expenses that vary each month." /></div>
             <span className="text-sm font-medium text-gray-800 tabular-nums">{fmt(txnSpent)}</span>
           </div>
 
@@ -1485,7 +1495,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
           </div>
 
           <div className="flex items-center justify-between px-5 py-3.5">
-            <span className="text-sm text-gray-500">Savings Rate</span>
+            <div className="flex items-center"><span className="text-sm text-gray-500">Savings Rate</span><HelpTip text="How much of your income you kept instead of spending." /></div>
             <span className={`text-sm font-semibold tabular-nums ${
               savingsRate === null ? 'text-gray-300'
               : savingsRate >= 20 ? 'text-[#0D7377]'
@@ -1560,7 +1570,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
 
           <button onClick={() => setVariableOpen(o => !o)} className="w-full px-4 py-2.5 bg-gray-50/80 flex items-center justify-between border-b border-gray-100 text-left">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Variable Spending</span>
+            <div className="flex items-center"><span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Variable Spending</span><HelpTip text="Day-to-day expenses that vary each month." /></div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-400">{monthTxns.length} transaction{monthTxns.length !== 1 ? 's' : ''}</span>
               <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${variableOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
@@ -1614,7 +1624,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
           {fixedCosts.length > 0 && (
             <>
               <button onClick={() => setFixedOpen(o => !o)} className="w-full border-t-2 border-gray-100 px-4 py-2.5 bg-gray-50/80 flex items-center justify-between text-left">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fixed Costs</span>
+                <div className="flex items-center"><span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fixed Costs</span><HelpTip text="Recurring monthly expenses like rent or subscriptions." /></div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-400">{fixedCosts.length} item{fixedCosts.length !== 1 ? 's' : ''}</span>
                   <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${fixedOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
@@ -1938,10 +1948,10 @@ function calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesPr
   return {
     score: Math.round(srScore + erScore + fvScore + clarityScore),
     components: [
-      { label: 'Savings Rate',   value: Math.round(srScore),    max: 40 },
-      { label: 'Expense Ratio',  value: Math.round(erScore),    max: 20 },
-      { label: 'Cost Balance',   value: Math.round(fvScore),    max: 30 },
-      { label: 'Data Coverage',  value: Math.round(clarityScore), max: 10 },
+      { label: 'Savings Rate',  tip: 'How much of your income you kept instead of spending.',  value: Math.round(srScore),      max: 40 },
+      { label: 'Expense Ratio', tip: 'What portion of your income went to expenses.',            value: Math.round(erScore),      max: 20 },
+      { label: 'Cost Balance',  tip: null,                                                        value: Math.round(fvScore),      max: 30 },
+      { label: 'Data Coverage', tip: null,                                                        value: Math.round(clarityScore), max: 10 },
     ],
   }
 }
@@ -2091,7 +2101,10 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
           <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at 15% 50%, ${annualScoreColor}18 0%, transparent 60%)` }} />
           <div className="relative flex items-center gap-8">
             <div className="shrink-0 w-56">
-              <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em] mb-4">Annual Score</p>
+              <div className="flex items-center gap-1 mb-4">
+                <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em]">Annual Score</p>
+                <HelpTip text="A score based on your savings, spending, and consistency." />
+              </div>
               <div className="flex items-end gap-2 mb-3">
                 <span className="text-[72px] font-black leading-none tabular-nums" style={{ color: annualScoreColor }}>
                   {healthScore.score}
@@ -2113,7 +2126,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
                 return (
                   <div key={c.label}>
                     <div className="flex justify-between items-baseline mb-2">
-                      <span className="text-[11px] font-medium text-white/45">{c.label}</span>
+                      <span className="text-[11px] font-medium text-white/45 flex items-center">{c.label}{c.tip && <HelpTip text={c.tip} />}</span>
                       <span className="text-xs font-bold tabular-nums" style={{ color: annualScoreColor }}>
                         {c.value}<span className="text-white/20 font-normal">/{c.max}</span>
                       </span>
@@ -2143,7 +2156,10 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         {/* Card 1: Annual Net Income */}
         <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Annual Net Income</p>
+            <div className="flex items-center">
+              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Annual Net Income</p>
+              <HelpTip text="Your take-home pay after tax and deductions." />
+            </div>
             <Wallet className="w-4 h-4 text-white/20" />
           </div>
           <p className={`text-3xl font-bold tabular-nums ${annualNet > 0 ? 'text-teal-400' : 'text-white/20'}`}>
@@ -2179,7 +2195,10 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         {/* Card 4: Savings Rate YTD */}
         <div className="bg-[#1A1A2E] rounded-xl p-6 border border-white/10">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings Rate YTD</p>
+            <div className="flex items-center">
+              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest">Savings Rate YTD</p>
+              <HelpTip text="How much of your income you kept instead of spending." />
+            </div>
             <Percent className="w-4 h-4 text-white/20" />
           </div>
           <p className={`text-3xl font-bold tabular-nums ${
@@ -2235,11 +2254,11 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         {/* Expense rows */}
         <div className="divide-y divide-gray-50">
           <div className="flex justify-between items-center py-2.5">
-            <span className="text-sm text-gray-600">Fixed Costs × 12</span>
+            <div className="flex items-center"><span className="text-sm text-gray-600">Fixed Costs × 12</span><HelpTip text="Recurring monthly expenses like rent or subscriptions." /></div>
             <span className="text-sm font-medium text-gray-800 tabular-nums">{fixedAnnualProjected > 0 ? fmt(fixedAnnualProjected) : '—'}</span>
           </div>
           <div className="flex justify-between items-center py-2.5">
-            <span className="text-sm text-gray-600">Variable Spending YTD</span>
+            <div className="flex items-center"><span className="text-sm text-gray-600">Variable Spending YTD</span><HelpTip text="Day-to-day expenses that vary each month." /></div>
             <span className="text-sm font-medium text-gray-800 tabular-nums">{monthsWithData > 0 ? fmt(txnSpent) : '—'}</span>
           </div>
           <div className="flex justify-between items-center py-2.5">
@@ -2261,7 +2280,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
             <span className="text-sm font-medium text-[#0D7377] tabular-nums">{allSavingsYTD > 0 ? fmt(allSavingsYTD) : '—'}</span>
           </div>
           <div className="flex justify-between items-center py-3">
-            <span className="text-sm font-semibold text-gray-700">Projected Savings (full year)</span>
+            <div className="flex items-center"><span className="text-sm font-semibold text-gray-700">Projected Savings (full year)</span><HelpTip text="Estimated year-end savings based on this month's rate." /></div>
             <span className={`text-xl font-bold tabular-nums ${
               projectedSavings === null ? 'text-gray-300' : 'text-[#0D7377]'
             }`}>
@@ -2269,7 +2288,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
             </span>
           </div>
           <div className="flex justify-between items-center py-3">
-            <span className="text-sm text-gray-500">Savings Rate</span>
+            <div className="flex items-center"><span className="text-sm text-gray-500">Savings Rate</span><HelpTip text="How much of your income you kept instead of spending." /></div>
             <span className={`text-xl font-bold tabular-nums ${
               savingsRate === null ? 'text-gray-300'
               : savingsRate >= 20 ? 'text-[#0D7377]'
@@ -2303,7 +2322,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
 
         {/* Fixed Costs — single total line */}
         <div className="flex justify-between items-center py-2 border-b border-gray-50">
-          <span className="text-sm text-gray-600">Fixed Costs</span>
+          <div className="flex items-center"><span className="text-sm text-gray-600">Fixed Costs</span><HelpTip text="Recurring monthly expenses like rent or subscriptions." /></div>
           <span className="text-sm font-medium text-gray-800 tabular-nums">{fixedYTD > 0 ? fmt(fixedYTD) : '—'}</span>
         </div>
 
