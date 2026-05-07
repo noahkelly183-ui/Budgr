@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
 import EmptyState from './components/EmptyState.jsx'
 import HelpTip from './components/HelpTip.jsx'
-import { TrendingUp, TrendingDown, PiggyBank, Percent, CalendarDays, BarChart3, Wallet, ArrowUpRight } from 'lucide-react'
+import { TrendingUp, TrendingDown, PiggyBank, Percent, CalendarDays, BarChart3, Wallet, ArrowUpRight, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie, ResponsiveContainer } from 'recharts'
 
 const CATEGORIES = [
@@ -1304,6 +1304,7 @@ function InsightsPanel({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent
     const r = savingsRate.toFixed(0)
     insights.push({
       label: 'Savings Rate',
+      icon: <PiggyBank className="w-3.5 h-3.5" />,
       body: savingsRate >= 20
         ? `Your savings rate is ${r}% this month — excellent. You're keeping more than 1 in 5 dollars you earn.`
         : savingsRate >= 10
@@ -1326,34 +1327,12 @@ function InsightsPanel({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent
     const catPct = Math.round((catAmt / txnSpent) * 100)
     insights.push({
       label: 'Top Variable Category',
+      icon: <TrendingUp className="w-3.5 h-3.5" />,
       body: `${catName} was your biggest variable expense at ${fmt(catAmt)} — ${catPct}% of all variable spending this month.`,
     })
   }
 
-  // 3. Fixed costs as % of income
-  if (fixedMonthlyTotal > 0 && monthlyNet > 0) {
-    const fixedPct = Math.round((fixedMonthlyTotal / monthlyNet) * 100)
-    insights.push({
-      label: 'Fixed Cost Ratio',
-      body: fixedPct > 50
-        ? `Fixed costs are ${fixedPct}% of your income — over half. Look for subscriptions or recurring bills you could renegotiate.`
-        : fixedPct >= 30
-          ? `Fixed costs account for ${fixedPct}% of your take-home — within a typical healthy range.`
-          : `Your fixed costs are just ${fixedPct}% of income, leaving solid flexibility for discretionary spending.`,
-    })
-  }
-
-  // 4. Projected annual savings
-  if (totalSavings > 0 && monthlyNet > 0) {
-    const projAnnual = totalSavings * 12
-    const projRate   = Math.round((projAnnual / (monthlyNet * 12)) * 100)
-    insights.push({
-      label: 'Projected Annual Savings',
-      body: `At this month's pace you're on track to save ${fmt(projAnnual)} this year — ${projRate}% of your annual take-home pay.`,
-    })
-  }
-
-  // 5. Month-over-month savings change (only if prior month has data)
+  // 3. Month-over-month savings change (only if prior month has data)
   const mIdx       = parseInt(selectedMonth, 10)
   const priorMIdx  = mIdx === 1 ? 12 : mIdx - 1
   const priorYear  = mIdx === 1 ? String(parseInt(selectedYear, 10) - 1) : selectedYear
@@ -1369,6 +1348,7 @@ function InsightsPanel({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent
     if (Math.abs(delta) > 1) {
       insights.push({
         label: 'vs Last Month',
+        icon: delta > 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />,
         body: delta > 0
           ? `You saved ${fmt(delta)} more than ${priorMonthName}. Good progress — keep the momentum going.`
           : `You saved ${fmt(Math.abs(delta))} less than ${priorMonthName}. ${topCatEntry ? `${topCatEntry[0]} spending was the biggest driver.` : 'Review variable costs to get back on track.'}`,
@@ -1380,19 +1360,145 @@ function InsightsPanel({ txns, selectedMonth, selectedYear, monthlyNet, txnSpent
 
   return (
     <div className="mt-6">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">This Month's Insights</p>
-      <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-        {insights.map((ins, i) => (
-          <div
-            key={i}
-            className="shrink-0 w-60 bg-white rounded-xl border border-gray-100 pl-4 pr-5 py-4"
-            style={{ borderLeft: '3px solid #0D7377' }}
-          >
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{ins.label}</p>
-            <p className="text-sm text-gray-700 leading-snug">{ins.body}</p>
-          </div>
-        ))}
+      <div className="flex items-center gap-2 mb-3">
+        <Lightbulb className="w-3.5 h-3.5 text-teal-500" />
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Insights</p>
       </div>
+      <div className="relative">
+        <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+          {insights.map((ins, i) => (
+            <div
+              key={i}
+              className="shrink-0 w-60 bg-white rounded-xl border border-gray-100 px-4 py-4"
+              style={{ borderLeft: '3px solid #0D7377' }}
+            >
+              <div className="flex items-center gap-1.5 mb-2" style={{ color: '#0D7377' }}>
+                {ins.icon}
+                <p className="text-[10px] font-bold uppercase tracking-wider">{ins.label}</p>
+              </div>
+              <p className="text-sm text-gray-600 leading-snug">{ins.body}</p>
+            </div>
+          ))}
+        </div>
+        {insights.length > 2 && (
+          <div className="absolute right-0 top-0 bottom-1 w-10 pointer-events-none rounded-r-xl"
+            style={{ background: 'linear-gradient(to left, #E5E7EB, transparent)' }} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── SpendingLeaks ────────────────────────────────────────────────────────────
+
+function SpendingLeaks({ txns, selectedMonth, selectedYear, debits, txnSpent }) {
+  const mIdx      = parseInt(selectedMonth, 10)
+  const priorMIdx = mIdx === 1 ? 12 : mIdx - 1
+  const priorYear = mIdx === 1 ? String(parseInt(selectedYear, 10) - 1) : selectedYear
+  const priorMStr = priorMIdx.toString().padStart(2, '0')
+
+  const priorDebits = txns.filter(t =>
+    yearMonthOf(t.date) === priorYear + '-' + priorMStr &&
+    t.type === 'debit' &&
+    !EXCLUDE_FROM_TOTALS.has(t.category) &&
+    !isSaving(t.category)
+  )
+  const hasPrior = priorDebits.length > 0
+  const priorByCat = {}
+  for (const t of priorDebits) {
+    const cat = t.category || 'Uncategorized'
+    priorByCat[cat] = (priorByCat[cat] || 0) + t.amount
+  }
+
+  const currByCat = {}
+  for (const t of debits) {
+    const cat = t.category || 'Uncategorized'
+    currByCat[cat] = (currByCat[cat] || 0) + t.amount
+  }
+
+  const leaks = []
+  const flagged = new Set()
+
+  // Spike: up >20% AND >$50 vs last month
+  if (hasPrior) {
+    for (const [cat, curr] of Object.entries(currByCat)) {
+      const prior     = priorByCat[cat] || 0
+      const delta     = curr - prior
+      const pctChange = prior > 0 ? (delta / prior) * 100 : null
+      if (delta > 50 && (pctChange === null || pctChange > 20)) {
+        const chip = prior > 0 ? `+${fmt(delta)}` : `New`
+        const body = prior > 0
+          ? `${fmt(delta)} higher than last month (+${Math.round(pctChange)}%).`
+          : `No spending here last month — ${fmt(curr)} this month.`
+        leaks.push({ cat, type: 'spike', sort: delta, chip, body })
+        flagged.add(cat)
+      }
+    }
+  }
+
+  // Concentration: >15% of total variable spend
+  if (txnSpent > 0) {
+    for (const [cat, curr] of Object.entries(currByCat)) {
+      if (flagged.has(cat)) continue
+      const share = (curr / txnSpent) * 100
+      if (share > 15 && curr > 50) {
+        leaks.push({
+          cat,
+          type: 'concentration',
+          sort: curr,
+          chip: `${Math.round(share)}%`,
+          body: `${Math.round(share)}% of your variable spend this month (${fmt(curr)}).`,
+        })
+        flagged.add(cat)
+      }
+    }
+  }
+
+  leaks.sort((a, b) => b.sort - a.sort)
+
+  const priorMonthName = MONTHS.find(m => m.id === priorMStr)?.label || 'last month'
+
+  return (
+    <div className="mt-4 bg-white rounded-xl border border-gray-100 overflow-hidden">
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-amber-100/80" style={{ backgroundColor: '#FFFBEB' }}>
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+          <span className="text-sm font-bold text-gray-800">Spending Spikes</span>
+          {hasPrior && (
+            <span className="text-xs text-gray-400 font-normal">vs {priorMonthName}</span>
+          )}
+        </div>
+        {leaks.length > 0 && (
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 tabular-nums">
+            {leaks.length} flag{leaks.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {leaks.length === 0 ? (
+        <div className="flex items-center gap-2.5 px-5 py-4">
+          <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0" />
+          <span className="text-sm text-gray-500">No spending spikes this month.</span>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {leaks.map((l, i) => (
+            <div key={i} className="flex items-start gap-3 px-5 py-3.5">
+              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 mt-1.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 leading-snug">{l.cat}</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-snug">{l.body}</p>
+              </div>
+              <span className="shrink-0 text-xs font-bold px-2 py-1 rounded-lg tabular-nums"
+                style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                {l.chip}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -1811,6 +1917,14 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
         savingsRate={savingsRate}
         savingsEntriesTotal={savingsEntriesTotal}
         debits={debits}
+      />
+
+      <SpendingLeaks
+        txns={txns}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        debits={debits}
+        txnSpent={txnSpent}
       />
 
     </div>
