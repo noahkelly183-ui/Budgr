@@ -2052,7 +2052,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selec
 
         {/* Card 1: Annual Net Income */}
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide mb-2">Annual Net Income</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Annual Net Income</p>
           <p className={`text-2xl font-semibold ${annualNet > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
             {annualNet > 0 ? fmt(annualNet) : '—'}
           </p>
@@ -2063,7 +2063,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selec
 
         {/* Card 2: Income to Date */}
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide mb-2">Income to Date</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Income to Date</p>
           <p className={`text-2xl font-semibold ${incomeToDate > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
             {incomeToDate > 0 ? fmt(incomeToDate) : '—'}
           </p>
@@ -2076,7 +2076,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selec
 
         {/* Card 3: Monthly Net Income */}
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide mb-2">Monthly Net Income</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Monthly Net Income</p>
           <p className={`text-2xl font-semibold ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
             {monthlyNet > 0 ? fmt(monthlyNet) : '—'}
           </p>
@@ -2085,7 +2085,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selec
 
         {/* Card 4: Monthly Savings */}
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide mb-2">Monthly Savings</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Monthly Savings</p>
           <p className={`text-2xl font-semibold ${
             monthlySavings === null ? 'text-gray-300'
             : monthlySavings >= 0 ? 'text-[#0D7377]' : 'text-red-500'
@@ -2103,7 +2103,7 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selec
 
         {/* Card 5: Projected Annual Savings — full width */}
         <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide mb-2">Projected Annual Savings</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Projected Annual Savings</p>
           <p className={`text-2xl font-semibold ${
             projectedAnnualSavings === null ? 'text-gray-300'
             : projectedAnnualSavings >= 0 ? 'text-[#0D7377]' : 'text-red-500'
@@ -3360,7 +3360,7 @@ function AuthScreen() {
 
 // ─── SettingsPage ─────────────────────────────────────────────────────────────
 
-function SettingsPage({ user, transactions, onClearTransactions }) {
+function SettingsPage({ user, transactions, onClearTransactions, darkMode, onToggleDark }) {
   const [displayName, setDisplayName]   = useState(user.user_metadata?.display_name || '')
   const [nameSaving, setNameSaving]     = useState(false)
   const [nameSaved, setNameSaved]       = useState(false)
@@ -3415,13 +3415,33 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
     URL.revokeObjectURL(url)
   }
 
+  const lbl = 'text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4'
+
   return (
     <div className="max-w-lg space-y-4">
 
+      {/* Appearance */}
+      <div className="bg-white rounded-xl border border-gray-100 p-6">
+        <p className={lbl}>Appearance</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Dark Mode</p>
+            <p className="text-xs text-gray-400 mt-0.5">Switch between light and dark interface</p>
+          </div>
+          <button
+            onClick={onToggleDark}
+            role="switch"
+            aria-checked={darkMode}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${darkMode ? 'bg-[#0D7377]' : 'bg-gray-200'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+      </div>
+
       {/* Account */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Account</p>
-
+        <p className={lbl}>Account</p>
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[11px] text-gray-400 mb-0.5 uppercase tracking-wide">Signed in as</p>
@@ -3434,7 +3454,6 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
             Sign Out
           </button>
         </div>
-
         <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-gray-700">Change Password</p>
@@ -3455,8 +3474,7 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
 
       {/* Profile */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Profile</p>
-
+        <p className={lbl}>Profile</p>
         <label className="block text-xs text-gray-500 mb-1.5">Display Name</label>
         <div className="flex gap-2">
           <input
@@ -3470,7 +3488,7 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
           <button
             onClick={handleSaveName}
             disabled={nameSaving || !displayName.trim()}
-            className="px-4 py-2 rounded-lg text-sm font-semibold bg-teal-500 hover:bg-teal-400 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] text-center"
+            className="px-4 py-2.5 rounded-lg text-xs font-medium bg-[#0D7377] text-white hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] text-center"
           >
             {nameSaving ? '…' : nameSaved ? 'Saved ✓' : 'Save'}
           </button>
@@ -3479,11 +3497,9 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
 
       {/* Data */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Data</p>
-
+        <p className={lbl}>Data</p>
         <div className="space-y-3">
 
-          {/* Export */}
           <div className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100">
             <div>
               <p className="text-sm font-medium text-gray-700">Export My Data</p>
@@ -3502,7 +3518,6 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
             </button>
           </div>
 
-          {/* Clear Transactions — danger zone */}
           <div className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 border-l-4 border-l-red-300">
             <div>
               <p className="text-sm font-medium text-gray-700">Clear All Transactions</p>
@@ -3540,8 +3555,7 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
 
       {/* About */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">About</p>
-
+        <p className={lbl}>About</p>
         <div className="space-y-3">
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">Version</span>
@@ -3549,10 +3563,7 @@ function SettingsPage({ user, transactions, onClearTransactions }) {
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">Support</span>
-            <a
-              href="mailto:support@budgr.app"
-              className="text-sm text-[#0D7377] font-medium hover:underline"
-            >
+            <a href="mailto:support@budgr.app" className="text-sm text-[#0D7377] font-medium hover:underline">
               support@budgr.app
             </a>
           </div>
@@ -3606,11 +3617,21 @@ export default function App() {
   const [dashSavingsOpen, setDashSavingsOpen]   = useState(false)
   const [isDemoMode, setIsDemoMode]         = useState(false)
   const [reloadKey, setReloadKey]           = useState(0)
+  const [darkMode, setDarkMode]             = useState(() => {
+    try { return localStorage.getItem('budgr_dark') === 'true' } catch { return false }
+  })
   const dataLoadedFor   = useRef(null)
   const salaryTimerRef  = useRef(null)
   const csvInputRef     = useRef(null)
 
   const dedupKey = t => `${t.date}|${t.amount}|${t.description.toUpperCase().trim()}`
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode)
+    try { localStorage.setItem('budgr_dark', String(darkMode)) } catch {}
+  }, [darkMode])
+
+  function toggleDarkMode() { setDarkMode(d => !d) }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -4653,6 +4674,8 @@ export default function App() {
               user={user}
               transactions={transactions}
               onClearTransactions={() => { setTransactions([]); setDedupKeyCache(new Set()); setCsvUploads([]) }}
+              darkMode={darkMode}
+              onToggleDark={toggleDarkMode}
             />
           )}
 

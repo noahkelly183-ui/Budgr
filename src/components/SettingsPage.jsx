@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../supabase.js'
 
-export default function SettingsPage({ user, transactions, onClearTransactions }) {
+export default function SettingsPage({ user, transactions, onClearTransactions, darkMode, onToggleDark }) {
   const [displayName, setDisplayName]   = useState(user.user_metadata?.display_name || '')
   const [nameSaving, setNameSaving]     = useState(false)
   const [nameSaved, setNameSaved]       = useState(false)
@@ -55,12 +55,39 @@ export default function SettingsPage({ user, transactions, onClearTransactions }
     URL.revokeObjectURL(url)
   }
 
+  const sectionLabel = 'text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4'
+
   return (
     <div className="max-w-lg space-y-4">
 
+      {/* Appearance */}
+      <div className="bg-white rounded-xl border border-gray-100 p-6">
+        <p className={sectionLabel}>Appearance</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Dark Mode</p>
+            <p className="text-xs text-gray-400 mt-0.5">Switch between light and dark interface</p>
+          </div>
+          <button
+            onClick={onToggleDark}
+            role="switch"
+            aria-checked={darkMode}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+              darkMode ? 'bg-[#0D7377]' : 'bg-gray-200'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                darkMode ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
       {/* Account */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Account</p>
+        <p className={sectionLabel}>Account</p>
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[11px] text-gray-400 mb-0.5 uppercase tracking-wide">Signed in as</p>
@@ -93,7 +120,7 @@ export default function SettingsPage({ user, transactions, onClearTransactions }
 
       {/* Profile */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Profile</p>
+        <p className={sectionLabel}>Profile</p>
         <label className="block text-xs text-gray-500 mb-1.5">Display Name</label>
         <div className="flex gap-2">
           <input
@@ -116,8 +143,9 @@ export default function SettingsPage({ user, transactions, onClearTransactions }
 
       {/* Data */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Data</p>
+        <p className={sectionLabel}>Data</p>
         <div className="space-y-3">
+
           <div className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100">
             <div>
               <p className="text-sm font-medium text-gray-700">Export My Data</p>
@@ -167,12 +195,13 @@ export default function SettingsPage({ user, transactions, onClearTransactions }
               </button>
             )}
           </div>
+
         </div>
       </div>
 
       {/* About */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">About</p>
+        <p className={sectionLabel}>About</p>
         <div className="space-y-3">
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">Version</span>
