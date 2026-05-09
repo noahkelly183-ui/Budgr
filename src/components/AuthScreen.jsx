@@ -34,7 +34,7 @@ export default function AuthScreen() {
 
         <div className="text-center mb-8">
           <p className="text-white font-bold text-3xl tracking-tight">Budgr</p>
-          <p className="text-white/40 text-sm mt-1">Your personal finance dashboard</p>
+          <p className="text-white/40 text-sm mt-1">Run your finances like a business.</p>
         </div>
 
         <div className="bg-[#0F3460] rounded-2xl border border-white/10 p-8 shadow-2xl">

@@ -47,9 +47,9 @@ export default function OnboardingScreen({ onNavigate, onDismiss }) {
 
       <div className="text-center mb-12">
         <p className="text-white font-bold text-4xl tracking-tight mb-4">Budgr</p>
-        <h1 className="text-white text-2xl font-semibold mb-3">Welcome to Budgr</h1>
+        <h1 className="text-white text-2xl font-semibold mb-3">Run your personal finances like a business.</h1>
         <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed">
-          Your personal finance dashboard — let's get you set up in 3 steps
+          Track your revenue, costs, and profit margin in one clean dashboard.
         </p>
       </div>
 

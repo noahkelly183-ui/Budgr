@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase.js'
+import { DEMO_TRANSACTIONS, DEMO_FIXED_COSTS, DEMO_SAVINGS_ENTRIES, DEMO_SALARY, DEMO_YEAR } from './data/demoData.js'
 import EmptyState from './components/EmptyState.jsx'
+import SavingsForecastPage from './components/SavingsForecastPage.jsx'
 import HelpTip from './components/HelpTip.jsx'
 import Privacy from './pages/Privacy.jsx'
 import { TrendingUp, TrendingDown, PiggyBank, Percent, CalendarDays, BarChart3, Wallet, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react'
@@ -158,7 +160,8 @@ const NAV_SECTIONS = [
       { id: 'salary',       label: 'Salary',       icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
       { id: 'fixed',        label: 'Fixed Costs',  icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
       { id: 'transactions', label: 'Transactions', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
-      { id: 'savings',      label: 'Savings',      icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z' },
+      { id: 'savings',          label: 'Savings',          icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z' },
+      { id: 'savings-forecast', label: 'Savings Forecast', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
     ],
   },
   {
@@ -208,6 +211,25 @@ function yearMonthOf(isoDate) {
   if (!isoDate) return ''
   const m = isoDate.match(/^(\d{4})-(\d{2})-\d{2}$/)
   return m ? `${m[1]}-${m[2]}` : ''
+}
+
+// Returns deduplicated active entries for a given month.
+// For each (name, category, isSavings) group, picks the version with the highest
+// start_month that is still <= the requested month. Entries with null start_month
+// are treated as start_month=1 (effective from the beginning of the year).
+function getActiveForMonth(entries, year, month) {
+  const m = typeof month === 'string' ? parseInt(month, 10) : month
+  const yearEntries = entries.filter(c => !c.year || c.year === year)
+  const valid = yearEntries.filter(c => (c.start_month ?? 1) <= m)
+  const grouped = new Map()
+  for (const c of valid) {
+    const key = `${c.name}|${c.category}|${c.isSavings ? '1' : '0'}`
+    const existing = grouped.get(key)
+    if (!existing || (c.start_month ?? 1) >= (existing.start_month ?? 1)) {
+      grouped.set(key, c)
+    }
+  }
+  return Array.from(grouped.values())
 }
 
 // ─── CategoryCombobox ────────────────────────────────────────────────────────
@@ -774,7 +796,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
 
 // ─── FixedCostsPage ───────────────────────────────────────────────────────────
 
-function FixedCostsPage({ fixedCosts, selectedYear, onAdd, onUpdate, onDelete }) {
+function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpdate, onDelete }) {
   const nameInputRef = useRef(null)
   const [name, setName]               = useState('')
   const [amount, setAmount]           = useState('')
@@ -805,7 +827,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, onAdd, onUpdate, onDelete })
       const parsed = parseFloat(String(val).replace(/,/g, ''))
       setLocal(cost.id, 'amount', parsed > 0 ? fmtAmt(parsed) : fmtAmt(cost.amount))
       if (!parsed || parsed === cost.amount) return
-      onUpdate(cost.id, { name: cost.name, amount: parsed, category: cost.category, frequency: cost.frequency ?? 'monthly' })
+      onUpdate(cost.id, { name: cost.name, amount: parsed, category: cost.category, frequency: cost.frequency ?? 'monthly' }, selectedMonth)
     }
   }
   function commitSelect(cost, field, val) {
@@ -1015,7 +1037,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, onAdd, onUpdate, onDelete })
 
 // ─── SavingsPage ─────────────────────────────────────────────────────────────
 
-function SavingsPage({ savingsEntries, selectedYear, onAdd, onUpdate, onDelete }) {
+function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpdate, onDelete }) {
   const [name, setName]               = useState('')
   const [amount, setAmount]           = useState('')
   const [category, setCategory]       = useState('')
@@ -1055,7 +1077,7 @@ function SavingsPage({ savingsEntries, selectedYear, onAdd, onUpdate, onDelete }
       const parsed = parseFloat(String(val).replace(/,/g, ''))
       setLocal(entry.id, 'amount', parsed > 0 ? fmtAmt(parsed) : fmtAmt(entry.amount))
       if (!parsed || parsed === entry.amount) return
-      onUpdate(entry.id, { name: entry.name, amount: parsed, category: entry.category, frequency: entry.frequency ?? 'monthly' })
+      onUpdate(entry.id, { name: entry.name, amount: parsed, category: entry.category, frequency: entry.frequency ?? 'monthly' }, selectedMonth)
     }
   }
   function commitSelect(entry, field, val) {
@@ -3038,7 +3060,7 @@ function LoadingSpinner() {
 
 // ─── GetStartedPage ───────────────────────────────────────────────────────────
 
-function GetStartedPage({ salary, transactions, fixedCosts, onNavigate }) {
+function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDemo }) {
   const hasIncome       = salary.gross > 0
   const hasTransactions = transactions.length > 0
   const untaggedCount   = transactions.filter(
@@ -3138,6 +3160,22 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate }) {
           />
         </div>
       </div>
+
+      {/* Try Demo */}
+      {onTryDemo && (
+        <div className="bg-white rounded-xl border border-gray-100 p-5 mb-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Not ready to connect your data?</p>
+            <p className="text-xs text-gray-400 mt-0.5">Explore Budgr with realistic demo data — no setup required.</p>
+          </div>
+          <button
+            onClick={onTryDemo}
+            className="shrink-0 bg-amber-400 hover:bg-amber-300 text-amber-900 text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+          >
+            Try Demo →
+          </button>
+        </div>
+      )}
 
       {/* Step list */}
       <div className="space-y-3">
@@ -3566,6 +3604,8 @@ export default function App() {
   const [dashVariableOpen, setDashVariableOpen] = useState(false)
   const [dashFixedOpen, setDashFixedOpen]       = useState(false)
   const [dashSavingsOpen, setDashSavingsOpen]   = useState(false)
+  const [isDemoMode, setIsDemoMode]         = useState(false)
+  const [reloadKey, setReloadKey]           = useState(0)
   const dataLoadedFor   = useRef(null)
   const salaryTimerRef  = useRef(null)
   const csvInputRef     = useRef(null)
@@ -3633,7 +3673,7 @@ export default function App() {
         }
 
         if (fixedRes.data) {
-          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category, frequency: r.frequency ?? 'monthly', isSavings: r.is_savings ?? isSaving(r.category), year: r.year ?? null }))
+          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category, frequency: r.frequency ?? 'monthly', isSavings: r.is_savings ?? isSaving(r.category), year: r.year ?? null, start_month: r.start_month ?? null }))
           setFixedCosts(rows.filter(r => !r.isSavings))
           setSavingsEntries(rows.filter(r => r.isSavings))
         }
@@ -3665,10 +3705,38 @@ export default function App() {
 
     loadData()
     return () => { dataLoadedFor.current = null }
-  }, [user])
+  }, [user, reloadKey])
+
+  function enterDemoMode() {
+    setIsDemoMode(true)
+    setTransactions(DEMO_TRANSACTIONS)
+    setFixedCosts(DEMO_FIXED_COSTS)
+    setSavingsEntries(DEMO_SAVINGS_ENTRIES)
+    setSalaries({ [DEMO_YEAR]: DEMO_SALARY })
+    setSelectedYear(DEMO_YEAR)
+    setSelectedMonth('05')
+    setActivePage('dashboard')
+  }
+
+  function exitDemoMode() {
+    setIsDemoMode(false)
+    setTransactions([])
+    setFixedCosts([])
+    setSavingsEntries([])
+    setSalaries({})
+    setSelectedYear(APP_YEAR)
+    setSelectedMonth('01')
+    dataLoadedFor.current = null
+    setReloadKey(k => k + 1)
+    setActivePage('get-started')
+  }
 
   async function addFixedCost(cost, year) {
     const freq = cost.frequency ?? 'monthly'
+    if (isDemoMode) {
+      setFixedCosts(prev => [...prev, { id: `demo-new-${Date.now()}`, name: cost.name, amount: cost.amount, category: cost.category, frequency: freq, isSavings: false, year: year ?? null, start_month: null }])
+      return
+    }
     const base = { user_id: user.id, name: cost.name, amount: cost.amount, category: cost.category }
     let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: false, year }).select().single()
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: false }).select().single())
@@ -3682,22 +3750,46 @@ export default function App() {
     }
   }
 
-  async function updateFixedCost(id, changes) {
-    setFixedCosts(prev => prev.map(c => c.id === id ? { ...c, ...changes } : c))
-    const { error } = await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
-    if (error) {
-      const { frequency: _f, ...rest } = changes
-      await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
+  async function updateFixedCost(id, changes, startMonth) {
+    if ('amount' in changes && startMonth) {
+      const current = fixedCosts.find(c => c.id === id)
+      if (!current || changes.amount === current.amount) return
+      const monthInt = new Date().getMonth() + 1
+      if (isDemoMode) {
+        setFixedCosts(prev => [...prev, { ...current, id: `demo-new-${Date.now()}`, amount: changes.amount, start_month: monthInt }])
+        return
+      }
+      const freq = changes.frequency ?? current.frequency ?? 'monthly'
+      const base = { user_id: user.id, name: changes.name ?? current.name, amount: changes.amount, category: changes.category ?? current.category, is_savings: false, year: current.year }
+      let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, start_month: monthInt }).select().single()
+      if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
+      if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
+      if (!error && data) {
+        setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: data.frequency ?? freq, isSavings: false, year: data.year ?? current.year ?? null, start_month: data.start_month ?? monthInt }])
+      }
+    } else {
+      setFixedCosts(prev => prev.map(c => c.id === id ? { ...c, ...changes } : c))
+      if (!isDemoMode) {
+        const { error } = await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
+        if (error) {
+          const { frequency: _f, ...rest } = changes
+          await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
+        }
+      }
     }
   }
 
   async function deleteFixedCost(id) {
     setFixedCosts(prev => prev.filter(c => c.id !== id))
-    await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
+    if (!isDemoMode) await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
   }
 
   async function addSavingsEntry(entry, year) {
     const freq = entry.frequency ?? 'monthly'
+    if (isDemoMode) {
+      setSavingsEntries(prev => [...prev, { id: `demo-new-${Date.now()}`, name: entry.name, amount: entry.amount, category: entry.category, frequency: freq, isSavings: true, year: year ?? null, start_month: null }])
+      return
+    }
     const base = { user_id: user.id, name: entry.name, amount: entry.amount, category: entry.category }
     let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: true, year }).select().single()
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: true }).select().single())
@@ -3711,18 +3803,38 @@ export default function App() {
     }
   }
 
-  async function updateSavingsEntry(id, changes) {
-    setSavingsEntries(prev => prev.map(e => e.id === id ? { ...e, ...changes } : e))
-    const { error } = await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
-    if (error) {
-      const { frequency: _f, ...rest } = changes
-      await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
+  async function updateSavingsEntry(id, changes, startMonth) {
+    if ('amount' in changes && startMonth) {
+      const current = savingsEntries.find(e => e.id === id)
+      if (!current || changes.amount === current.amount) return
+      const monthInt = new Date().getMonth() + 1
+      if (isDemoMode) {
+        setSavingsEntries(prev => [...prev, { ...current, id: `demo-new-${Date.now()}`, amount: changes.amount, start_month: monthInt }])
+        return
+      }
+      const freq = changes.frequency ?? current.frequency ?? 'monthly'
+      const base = { user_id: user.id, name: changes.name ?? current.name, amount: changes.amount, category: changes.category ?? current.category, is_savings: true, year: current.year }
+      let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, start_month: monthInt }).select().single()
+      if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
+      if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
+      if (!error && data) {
+        setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: data.frequency ?? freq, isSavings: true, year: data.year ?? current.year ?? null, start_month: data.start_month ?? monthInt }])
+      }
+    } else {
+      setSavingsEntries(prev => prev.map(e => e.id === id ? { ...e, ...changes } : e))
+      if (!isDemoMode) {
+        const { error } = await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
+        if (error) {
+          const { frequency: _f, ...rest } = changes
+          await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
+        }
+      }
     }
   }
 
   async function deleteSavingsEntry(id) {
     setSavingsEntries(prev => prev.filter(e => e.id !== id))
-    await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
+    if (!isDemoMode) await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
   }
 
   async function setCategory(id, category) {
@@ -3743,15 +3855,17 @@ export default function App() {
     ))
 
     // Supabase: update the manually tagged row
-    supabase.from('transactions').update({ category }).eq('id', id).eq('user_id', user.id).then()
+    if (!isDemoMode) supabase.from('transactions').update({ category }).eq('id', id).eq('user_id', user.id).then()
 
     // Supabase: batch update similar untagged rows
     if (similar.length > 0) {
-      supabase.from('transactions')
-        .update({ category, from_memory: true })
-        .in('id', similar.map(tx => tx.id))
-        .eq('user_id', user.id)
-        .then()
+      if (!isDemoMode) {
+        supabase.from('transactions')
+          .update({ category, from_memory: true })
+          .in('id', similar.map(tx => tx.id))
+          .eq('user_id', user.id)
+          .then()
+      }
 
       clearTimeout(setCategory._timer)
       setToast({ msg: `Auto-tagged ${similar.length} similar transaction${similar.length !== 1 ? 's' : ''}` })
@@ -3771,7 +3885,7 @@ export default function App() {
     }
 
     // Persist to category_memory using full description as key
-    if (category) {
+    if (category && !isDemoMode) {
       setCategoryMemory(prev => ({ ...prev, [descKey]: category }))
       supabase.from('category_memory').upsert(
         { user_id: user.id, key: descKey, category },
@@ -3787,11 +3901,13 @@ export default function App() {
     setTransactions(prev => prev.map(tx =>
       ids.includes(tx.id) ? { ...tx, category, fromMemory: true } : tx
     ))
-    supabase.from('transactions')
-      .update({ category, from_memory: true })
-      .in('id', ids)
-      .eq('user_id', user.id)
-      .then()
+    if (!isDemoMode) {
+      supabase.from('transactions')
+        .update({ category, from_memory: true })
+        .in('id', ids)
+        .eq('user_id', user.id)
+        .then()
+    }
     setFuzzyPrompt(null)
     clearTimeout(setCategory._timer)
     setToast({ msg: `Tagged ${matches.length} transaction${matches.length !== 1 ? 's' : ''} as "${category}"` })
@@ -3805,7 +3921,7 @@ export default function App() {
   async function handleDeleteUpload(upload) {
     const ids = upload.txnIds || []
     if (ids.length > 0) {
-      await supabase.from('transactions').delete().in('id', ids).eq('user_id', user.id)
+      if (!isDemoMode) await supabase.from('transactions').delete().in('id', ids).eq('user_id', user.id)
       setTransactions(prev => prev.filter(t => !ids.includes(t.id)))
       // Remove deleted transaction dedup keys so they can be re-imported if needed
       setDedupKeyCache(prev => {
@@ -3823,6 +3939,11 @@ export default function App() {
 
   async function addCustomTag(category, tag) {
     const existing = customTags.find(t => t.category === category)
+    if (isDemoMode) {
+      if (existing) setCustomTags(prev => prev.map(t => t.category === category ? { ...t, tag } : t))
+      else setCustomTags(prev => [...prev, { id: `demo-tag-${Date.now()}`, category, tag }])
+      return
+    }
     if (existing) {
       const { data } = await supabase.from('custom_tags').update({ tag }).eq('id', existing.id).eq('user_id', user.id).select().single()
       if (data) setCustomTags(prev => prev.map(t => t.id === data.id ? { ...t, tag: data.tag } : t))
@@ -3835,7 +3956,7 @@ export default function App() {
   async function removeCustomTag(category) {
     const existing = customTags.find(t => t.category === category)
     if (!existing) return
-    await supabase.from('custom_tags').delete().eq('id', existing.id).eq('user_id', user.id)
+    if (!isDemoMode) await supabase.from('custom_tags').delete().eq('id', existing.id).eq('user_id', user.id)
     setCustomTags(prev => prev.filter(t => t.category !== category))
   }
 
@@ -3874,6 +3995,7 @@ export default function App() {
   }
 
   function handleFile(file) {
+    if (isDemoMode) { setToast({ msg: 'CSV import is disabled in Demo Mode' }); setTimeout(() => setToast(null), 3000); return }
     const reader = new FileReader()
     reader.onload = async e => {
       // 1. Parse + apply category_memory to all incoming rows
@@ -4028,6 +4150,7 @@ export default function App() {
   function handleSalaryChange(next) {
     const yearForSave = selectedYear
     setSalaries(prev => ({ ...prev, [yearForSave]: next }))
+    if (isDemoMode) return
     clearTimeout(salaryTimerRef.current)
     salaryTimerRef.current = setTimeout(async () => {
       const yearPayload = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0, year: yearForSave }
@@ -4075,7 +4198,8 @@ export default function App() {
     transactions: 'All Transactions',
     salary:       'Salary',
     fixed:        'Fixed Costs',
-    savings:      'Savings',
+    savings:           'Savings',
+    'savings-forecast': 'Savings Forecast',
     categories:   'Categories',
     annual:           'Annual Summary',
     'year-comparison': 'Year Comparison',
@@ -4161,6 +4285,19 @@ export default function App() {
       {/* ── Main ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
 
+        {/* Demo Mode banner */}
+        {isDemoMode && (
+          <div className="shrink-0 bg-amber-400 px-6 py-2.5 flex items-center justify-between gap-4">
+            <span className="text-sm font-semibold text-amber-900">Demo Mode — your data is not saved.</span>
+            <button
+              onClick={exitDemoMode}
+              className="text-xs font-semibold bg-amber-900/20 hover:bg-amber-900/30 text-amber-900 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+            >
+              Exit Demo
+            </button>
+          </div>
+        )}
+
         {/* Top bar */}
         <header className="bg-white border-b border-gray-200 px-6 flex items-center justify-between py-4 shrink-0">
           <h1 className="text-2xl font-bold text-gray-900">{PAGE_TITLES[activePage] || ''}</h1>
@@ -4223,6 +4360,7 @@ export default function App() {
               transactions={transactions}
               fixedCosts={fixedCosts}
               onNavigate={setActivePage}
+              onTryDemo={!isDemoMode ? enterDemoMode : undefined}
             />
           )}
 
@@ -4233,8 +4371,8 @@ export default function App() {
               selectedYear={selectedYear}
               setCategory={setCategory}
               salary={salary}
-              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
-              savingsEntries={savingsEntries.filter(e => !e.year || e.year === selectedYear)}
+              fixedCosts={getActiveForMonth(fixedCosts, selectedYear, selectedMonth)}
+              savingsEntries={getActiveForMonth(savingsEntries, selectedYear, selectedMonth)}
               variableOpen={dashVariableOpen} setVariableOpen={setDashVariableOpen}
               fixedOpen={dashFixedOpen}       setFixedOpen={setDashFixedOpen}
               savingsOpen={dashSavingsOpen}   setSavingsOpen={setDashSavingsOpen}
@@ -4442,15 +4580,15 @@ export default function App() {
               transactions={transactions}
               selectedMonth={selectedMonth}
               selectedYear={selectedYear}
-              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
+              fixedCosts={getActiveForMonth(fixedCosts, selectedYear, selectedMonth)}
             />
           )}
 
           {activePage === 'categories' && (
             <CategoriesPage
               transactions={transactions}
-              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
-              savingsEntries={savingsEntries.filter(e => !e.year || e.year === selectedYear)}
+              fixedCosts={getActiveForMonth(fixedCosts, selectedYear, selectedMonth)}
+              savingsEntries={getActiveForMonth(savingsEntries, selectedYear, selectedMonth)}
               selectedYear={selectedYear}
               customTags={customTags}
               onTagCategory={addCustomTag}
@@ -4461,8 +4599,9 @@ export default function App() {
 
           {activePage === 'fixed' && (
             <FixedCostsPage
-              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
+              fixedCosts={getActiveForMonth(fixedCosts, selectedYear, selectedMonth)}
               selectedYear={selectedYear}
+              selectedMonth={selectedMonth}
               onAdd={cost => addFixedCost(cost, selectedYear)}
               onUpdate={updateFixedCost}
               onDelete={deleteFixedCost}
@@ -4471,11 +4610,20 @@ export default function App() {
 
           {activePage === 'savings' && (
             <SavingsPage
-              savingsEntries={savingsEntries.filter(e => !e.year || e.year === selectedYear)}
+              savingsEntries={getActiveForMonth(savingsEntries, selectedYear, selectedMonth)}
               selectedYear={selectedYear}
+              selectedMonth={selectedMonth}
               onAdd={entry => addSavingsEntry(entry, selectedYear)}
               onUpdate={updateSavingsEntry}
               onDelete={deleteSavingsEntry}
+            />
+          )}
+
+          {activePage === 'savings-forecast' && (
+            <SavingsForecastPage
+              savingsEntries={getActiveForMonth(savingsEntries, selectedYear, 12)}
+              user={user}
+              isDemoMode={isDemoMode}
             />
           )}
 
@@ -4483,8 +4631,8 @@ export default function App() {
             <AnnualSummary
               transactions={transactions}
               salary={salary}
-              fixedCosts={fixedCosts.filter(c => !c.year || c.year === selectedYear)}
-              savingsEntries={savingsEntries.filter(e => !e.year || e.year === selectedYear)}
+              fixedCosts={getActiveForMonth(fixedCosts, selectedYear, 12)}
+              savingsEntries={getActiveForMonth(savingsEntries, selectedYear, 12)}
               selectedYear={selectedYear}
               onNavigate={setActivePage}
             />
