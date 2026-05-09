@@ -4033,41 +4033,31 @@ export default function App() {
       const yearPayload = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0, year: yearForSave }
       const basePayload = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0 }
 
-      // Try year-scoped lookup first
-      let { data: existing, error: selectErr } = await supabase
-        .from('salary_settings').select('id').eq('user_id', user.id).eq('year', yearForSave).limit(1)
+      // Fetch all rows for this user, then do year lookup in JS to avoid PostgREST issues with 'year' as a filter
+      const { data: allRows, error: fetchErr } = await supabase
+        .from('salary_settings').select('*').eq('user_id', user.id)
 
-      if (selectErr) {
-        // year column doesn't exist — fall back to single-row, no year in payload
-        setSalaries(prev => ({ ...prev, global: next }))
-        ;({ data: existing, error: selectErr } = await supabase
-          .from('salary_settings').select('id').eq('user_id', user.id).limit(1))
-        if (selectErr) { console.error('[budgr] salary save failed:', selectErr); return }
-        let error
-        if (existing?.length) {
-          ;({ error } = await supabase.from('salary_settings').update(basePayload).eq('id', existing[0].id))
-        } else {
-          ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...basePayload }))
-        }
-        if (error) console.error('[budgr] salary save failed:', error)
-        return
-      }
+      if (fetchErr) { console.error('[budgr] salary save failed:', fetchErr); return }
 
-      // year column exists — do year-scoped save
+      const existingRow = allRows?.find(r => r.year === yearForSave)
+      const anyRow      = allRows?.[0]
+
       let error
-      if (existing?.length) {
-        ;({ error } = await supabase.from('salary_settings').update(yearPayload).eq('id', existing[0].id))
-      } else {
+      if (existingRow) {
+        // Update the year-specific row by id
+        ;({ error } = await supabase.from('salary_settings').update(yearPayload).eq('id', existingRow.id))
+      } else if (anyRow) {
+        // No year-specific row — try insert first, fall back to updating existing row
         ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...yearPayload }))
         if (error) {
-          // INSERT failed (unique constraint on user_id) — update whatever row exists and stamp the year on it
           error = null
-          const { data: anyRow } = await supabase.from('salary_settings').select('id').eq('user_id', user.id).limit(1)
-          if (anyRow?.length) {
-            ;({ error } = await supabase.from('salary_settings').update(yearPayload).eq('id', anyRow[0].id))
-          }
+          ;({ error } = await supabase.from('salary_settings').update(yearPayload).eq('id', anyRow.id))
         }
+      } else {
+        // No rows at all — insert fresh
+        ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...basePayload }))
       }
+
       if (error) console.error('[budgr] salary save failed:', error)
     }, 600)
   }
