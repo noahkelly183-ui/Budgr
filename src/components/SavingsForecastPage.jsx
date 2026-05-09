@@ -217,7 +217,7 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
   // ── empty state ──────────────────────────────────────────────────────────────
   if (accounts.length === 0) {
     return (
-      <div className="max-w-2xl">
+      <div className="w-full">
         <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
           <div className="w-12 h-12 rounded-full bg-[#0D7377]/10 flex items-center justify-center mx-auto mb-4">
             <svg className="w-6 h-6 text-[#0D7377]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -233,7 +233,7 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
 
   // ── render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-4xl space-y-5 print:space-y-4">
+    <div className="w-full space-y-5 print:space-y-4">
 
       {/* Section E — Controls */}
       <div className="bg-white rounded-xl border border-gray-100 p-5 print:hidden">
