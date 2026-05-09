@@ -4059,6 +4059,14 @@ export default function App() {
         ;({ error } = await supabase.from('salary_settings').update(yearPayload).eq('id', existing[0].id))
       } else {
         ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...yearPayload }))
+        if (error) {
+          // INSERT failed (unique constraint on user_id) — update whatever row exists and stamp the year on it
+          error = null
+          const { data: anyRow } = await supabase.from('salary_settings').select('id').eq('user_id', user.id).limit(1)
+          if (anyRow?.length) {
+            ;({ error } = await supabase.from('salary_settings').update(yearPayload).eq('id', anyRow[0].id))
+          }
+        }
       }
       if (error) console.error('[budgr] salary save failed:', error)
     }, 600)
