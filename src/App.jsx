@@ -4030,33 +4030,41 @@ export default function App() {
     setSalaries(prev => ({ ...prev, [yearForSave]: next }))
     clearTimeout(salaryTimerRef.current)
     salaryTimerRef.current = setTimeout(async () => {
-      const payload     = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0, year: yearForSave }
-      const payloadSafe = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, year: yearForSave }
+      const yearPayload = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0, year: yearForSave }
+      const basePayload = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0 }
 
-      // Look for an existing row scoped to this year
+      // Try year-scoped lookup first
       let { data: existing, error: selectErr } = await supabase
         .from('salary_settings').select('id').eq('user_id', user.id).eq('year', yearForSave).limit(1)
 
-      // If year column doesn't exist on the table yet, fall back to single-row behavior
       if (selectErr) {
+        // year column doesn't exist — fall back to single-row, no year in payload
+        setSalaries(prev => ({ ...prev, global: next }))
         ;({ data: existing, error: selectErr } = await supabase
           .from('salary_settings').select('id').eq('user_id', user.id).limit(1))
         if (selectErr) { console.error('[budgr] salary save failed:', selectErr); return }
+        let error
+        if (existing?.length) {
+          ;({ error } = await supabase.from('salary_settings').update(basePayload).eq('id', existing[0].id))
+        } else {
+          ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...basePayload }))
+        }
+        if (error) console.error('[budgr] salary save failed:', error)
+        return
       }
 
+      // year column exists — do year-scoped save
       let error
       if (existing?.length) {
-        ;({ error } = await supabase.from('salary_settings').update(payload).eq('id', existing[0].id))
-        if (error) ;({ error } = await supabase.from('salary_settings').update(payloadSafe).eq('id', existing[0].id))
+        ;({ error } = await supabase.from('salary_settings').update(yearPayload).eq('id', existing[0].id))
       } else {
-        ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...payload }))
-        if (error) ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...payloadSafe }))
+        ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...yearPayload }))
       }
       if (error) console.error('[budgr] salary save failed:', error)
     }, 600)
   }
 
-  const salary             = salaries[selectedYear] ?? { gross: 0, taxRate: 30, deductions: 0, extraIncome: 0 }
+  const salary             = salaries[selectedYear] ?? salaries['global'] ?? { gross: 0, taxRate: 30, deductions: 0, extraIncome: 0 }
   const annualNet          = salary.gross > 0
     ? salary.gross * (1 - salary.taxRate / 100) - salary.deductions * 12
     : 0
