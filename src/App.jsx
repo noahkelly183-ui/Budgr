@@ -4064,7 +4064,7 @@ export default function App() {
     }, 600)
   }
 
-  const salary             = salaries[selectedYear] ?? { gross: 0, taxRate: 30, deductions: 0, extraIncome: 0 }
+  const salary             = salaries[selectedYear] ?? salaries['global'] ?? { gross: 0, taxRate: 30, deductions: 0, extraIncome: 0 }
   const annualNet          = salary.gross > 0
     ? salary.gross * (1 - salary.taxRate / 100) - salary.deductions * 12
     : 0
