@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Hide browser-native password reveal button so our custom toggle works */
+input::-ms-reveal,
+input::-ms-clear,
+input::-webkit-credentials-auto-fill-button { display: none !important; }
+
 /* ── Dark mode ──────────────────────────────────────────────────────────────
    Applied when <html class="dark"> is set.
    html.dark specificity (0,2,1) beats Tailwind's single-class (0,1,0).
