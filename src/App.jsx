@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import { supabase } from './supabase.js'
 import { DEMO_TRANSACTIONS, DEMO_FIXED_COSTS, DEMO_SAVINGS_ENTRIES, DEMO_SALARY, DEMO_YEAR } from './data/demoData.js'
 import EmptyState from './components/EmptyState.jsx'
@@ -4685,6 +4686,7 @@ export default function App() {
         </main>
       </div>
       <Analytics />
+      <SpeedInsights />
     </div>
   )
 }
