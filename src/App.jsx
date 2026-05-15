@@ -4229,6 +4229,32 @@ export default function App() {
     }
   }
 
+  function handleUndo() {
+    if (!toast?.undo) return
+    const { txns } = toast.undo
+    setTransactions(prev => prev.map(tx => {
+      const entry = txns.find(u => u.id === tx.id)
+      return entry ? { ...tx, category: entry.prevCategory, fromMemory: entry.prevFromMemory } : tx
+    }))
+    if (!isDemoMode) {
+      // Group by (prevCategory, prevFromMemory) to minimize Supabase calls
+      const groups = new Map()
+      txns.forEach(u => {
+        const key = `${u.prevCategory}||${u.prevFromMemory}`
+        if (!groups.has(key)) groups.set(key, { prevCategory: u.prevCategory, prevFromMemory: u.prevFromMemory, ids: [] })
+        groups.get(key).ids.push(u.id)
+      })
+      groups.forEach(({ prevCategory, prevFromMemory, ids }) => {
+        supabase.from('transactions')
+          .update({ category: prevCategory || null, from_memory: prevFromMemory })
+          .in('id', ids)
+          .eq('user_id', user.id)
+      })
+    }
+    clearTimeout(setCategory._timer)
+    setToast(null)
+  }
+
   async function setCategory(id, category) {
     const t = transactions.find(tx => tx.id === id)
     if (!t) return
@@ -4240,6 +4266,12 @@ export default function App() {
       tx => tx.id !== id && !tx.category && tx.description.toUpperCase().trim() === descKey
     )
     const exactIds = new Set([id, ...similar.map(tx => tx.id)])
+
+    // Snapshot previous state for undo
+    const undoTxns = [
+      { id: t.id, prevCategory: t.category || '', prevFromMemory: t.fromMemory || false },
+      ...similar.map(tx => ({ id: tx.id, prevCategory: tx.category || '', prevFromMemory: tx.fromMemory || false }))
+    ]
 
     // Apply category to the target + all exact-matching untagged in one state update
     setTransactions(prev => prev.map(tx =>
@@ -4259,9 +4291,12 @@ export default function App() {
           .eq('user_id', user.id)
           .then(({ error }) => { if (error) console.error('[budgr] batchSetCategory failed:', error.message) })
       }
-
       clearTimeout(setCategory._timer)
-      setToast({ msg: `Auto-tagged ${similar.length} similar transaction${similar.length !== 1 ? 's' : ''}` })
+      setToast({ msg: `Tagged "${category}" + ${similar.length} similar`, undo: { txns: undoTxns } })
+      setCategory._timer = setTimeout(() => setToast(null), 5000)
+    } else {
+      clearTimeout(setCategory._timer)
+      setToast({ msg: `Tagged as "${category}"`, undo: { txns: undoTxns } })
       setCategory._timer = setTimeout(() => setToast(null), 4000)
     }
 
@@ -4289,9 +4324,15 @@ export default function App() {
 
   function handleFuzzyAccept(selectedIds) {
     if (!fuzzyPrompt) return
-    const { category } = fuzzyPrompt
+    const { category, matches } = fuzzyPrompt
     const idSet = new Set(selectedIds)
     if (idSet.size === 0) { setFuzzyPrompt(null); return }
+
+    // Snapshot previous state for undo
+    const undoTxns = matches
+      .filter(tx => idSet.has(tx.id))
+      .map(tx => ({ id: tx.id, prevCategory: tx.category || '', prevFromMemory: tx.fromMemory || false }))
+
     setTransactions(prev => prev.map(tx =>
       idSet.has(tx.id) ? { ...tx, category, fromMemory: true } : tx
     ))
@@ -4304,8 +4345,8 @@ export default function App() {
     }
     setFuzzyPrompt(null)
     clearTimeout(setCategory._timer)
-    setToast({ msg: `Tagged ${idSet.size} transaction${idSet.size !== 1 ? 's' : ''} as "${category}"` })
-    setCategory._timer = setTimeout(() => setToast(null), 4000)
+    setToast({ msg: `Tagged ${idSet.size} transaction${idSet.size !== 1 ? 's' : ''} as "${category}"`, undo: { txns: undoTxns } })
+    setCategory._timer = setTimeout(() => setToast(null), 5000)
   }
 
   function handleFuzzyDismiss() {
@@ -4969,6 +5010,11 @@ export default function App() {
           <div className="shrink-0 mx-6 mt-3">
             <div className="flex items-center gap-2 bg-[#1A1F2E] text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow-md">
               <span>{toast.msg}</span>
+              {toast.undo && (
+                <button onClick={handleUndo} className="ml-2 shrink-0 text-[#00C896] font-semibold hover:opacity-75 transition-opacity">
+                  Undo
+                </button>
+              )}
               <button onClick={() => setToast(null)} className="ml-auto text-white/60 hover:text-white leading-none">✕</button>
             </div>
           </div>
