@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { fmt } from '../utils/finance.js'
+import { supabase } from '../supabase.js'
 
 // ── math helpers ──────────────────────────────────────────────────────────────
 
@@ -18,10 +19,9 @@ function isCash(cat) {
 }
 
 function scenarioRate(cat, sc, override) {
-  if (override !== null && override !== undefined) return override
-  const base = defaultRate(cat)
-  if (sc === 'conservative') return isCash(cat) ? 0.5 : Math.max(base - 3, 0.5)
-  if (sc === 'optimistic')   return isCash(cat) ? 2.5 : base + 2
+  const base = (override !== null && override !== undefined) ? override : defaultRate(cat)
+  if (sc === 'conservative') return Math.max(base - 3, 0)
+  if (sc === 'optimistic')   return base + 2
   return base
 }
 
@@ -47,19 +47,23 @@ const HORIZON_OPTIONS = [1, 3, 5, 10, 20, 30]
 
 const SCENARIOS = [
   { id: 'conservative', label: 'Conservative', color: '#F59E0B', desc: 'Lower return rates' },
-  { id: 'base',         label: 'Base',         color: '#0D7377', desc: 'Expected returns'  },
-  { id: 'optimistic',   label: 'Optimistic',   color: '#14A085', desc: 'Higher return rates' },
+  { id: 'base',         label: 'Base',         color: '#00C896', desc: 'Expected returns'  },
+  { id: 'optimistic',   label: 'Optimistic',   color: '#0D9488', desc: 'Higher return rates' },
 ]
+
+const MILESTONE_YEARS = [1, 3, 5, 10, 20, 30]
+
+const fmtW = n => '$' + Math.round(n).toLocaleString('en-US')
 
 // ── InlineEdit ────────────────────────────────────────────────────────────────
 
-function InlineEdit({ value, onSave, prefix = '', suffix = '', className = '' }) {
+function InlineEdit({ value, onSave, prefix = '', suffix = '', className = '', isBalance = false }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft]     = useState('')
 
   function start() { setDraft(String(value)); setEditing(true) }
   function commit() {
-    const n = parseFloat(draft)
+    const n = parseFloat(String(draft).replace(/,/g, ''))
     if (!isNaN(n) && n >= 0) onSave(n)
     setEditing(false)
   }
@@ -68,12 +72,13 @@ function InlineEdit({ value, onSave, prefix = '', suffix = '', className = '' })
     return (
       <input
         autoFocus
-        type="number"
+        type="text"
+        inputMode="decimal"
         value={draft}
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
-        className="w-24 border border-[#0D7377] rounded px-1.5 py-0.5 text-sm text-right outline-none tabular-nums"
+        className="w-24 border border-[#00C896] rounded px-1.5 py-0.5 text-sm text-right outline-none tabular-nums"
       />
     )
   }
@@ -82,11 +87,26 @@ function InlineEdit({ value, onSave, prefix = '', suffix = '', className = '' })
     ? value.toLocaleString('en-US', { minimumFractionDigits: value % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })
     : value
 
+  if (isBalance && value === 0) {
+    return (
+      <button
+        onClick={start}
+        title="Click to enter balance"
+        className="inline-flex items-center gap-1 text-sm tabular-nums text-gray-300 hover:text-[#00C896] transition-colors group"
+      >
+        <span>{prefix}0</span>
+        <svg className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a4 4 0 01-1.414.914l-3.414.5.5-3.414A4 4 0 019 13z" />
+        </svg>
+      </button>
+    )
+  }
+
   return (
     <button
       onClick={start}
       title="Click to edit"
-      className={`text-sm tabular-nums hover:text-[#0D7377] hover:underline cursor-text ${className}`}
+      className={`text-sm tabular-nums hover:text-[#00C896] hover:underline cursor-text ${className}`}
     >
       {prefix}{display}{suffix}
     </button>
@@ -106,21 +126,70 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
   const [scenario,      setScenario]      = useState('base')
   const [showGoalForm,  setShowGoalForm]  = useState(false)
   const [newGoal,       setNewGoal]       = useState({ name: '', target: '', targetDate: '' })
+  const [editingGoalId,   setEditingGoalId]   = useState(null)
+  const [goalDraft,       setGoalDraft]       = useState({ name: '', target: '', targetDate: '' })
+  const [milestonesOpen,  setMilestonesOpen]  = useState(false)
+
+  // saveReadyRef prevents the save effect from overwriting localStorage with empty
+  // initial state before the load effect has finished populating state from storage.
+  const saveReadyRef       = useRef(false)
+  const supabaseSaveTimer  = useRef(null)
 
   useEffect(() => {
+    saveReadyRef.current = false
+    let lsTs = 0
     try {
       const s = JSON.parse(localStorage.getItem(storageKey) || '{}')
+      lsTs = s._ts ?? 0
       if (s.balances)                  setBalances(s.balances)
       if (s.rateOverrides)             setRateOverrides(s.rateOverrides)
       if (s.contribAdj !== undefined)  setContribAdj(s.contribAdj)
       if (s.goals)                     setGoals(s.goals)
     } catch {}
+
+    // Load from Supabase for logged-in users; override localStorage only if it
+    // is not a recent in-flight write (same 5-second window as salary_settings).
+    if (!isDemoMode && user?.id) {
+      supabase
+        .from('user_preferences')
+        .select('forecast_state')
+        .eq('user_id', user.id)
+        .maybeSingle()
+        .then(({ data, error }) => {
+          if (error || !data?.forecast_state) return
+          if (lsTs > Date.now() - 5_000) return  // recent local write takes precedence
+          const db = data.forecast_state
+          if (db.balances)                  setBalances(db.balances)
+          if (db.rateOverrides)             setRateOverrides(db.rateOverrides)
+          if (db.contribAdj !== undefined)  setContribAdj(db.contribAdj)
+          if (db.goals)                     setGoals(db.goals)
+        })
+    }
+
+    // Allow saves only after this tick — prevents the initial save from wiping
+    // the data that was just scheduled to be loaded via the above setX() calls.
+    const id = setTimeout(() => { saveReadyRef.current = true }, 0)
+    return () => clearTimeout(id)
   }, [storageKey])
 
   useEffect(() => {
+    if (!saveReadyRef.current) return
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ balances, rateOverrides, contribAdj, goals }))
+      localStorage.setItem(storageKey, JSON.stringify({ balances, rateOverrides, contribAdj, goals, _ts: Date.now() }))
     } catch {}
+
+    if (!isDemoMode && user?.id) {
+      clearTimeout(supabaseSaveTimer.current)
+      supabaseSaveTimer.current = setTimeout(() => {
+        supabase
+          .from('user_preferences')
+          .upsert(
+            { user_id: user.id, forecast_state: { balances, rateOverrides, contribAdj, goals } },
+            { onConflict: 'user_id' }
+          )
+          .then(({ error }) => { if (error) console.error('[forecast] save failed:', error.message) })
+      }, 1000)
+    }
   }, [storageKey, balances, rateOverrides, contribAdj, goals])
 
   // build account objects from savings entries
@@ -139,25 +208,31 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
   const n = Math.max(accounts.length, 1)
   const adjPerAccount = contribAdj / n
 
-  function effectiveRate(acc, sc) {
-    return scenarioRate(acc.category, sc, acc.rateOverride)
-  }
-
-  function effectiveMonthly(acc) {
-    return Math.max(0, acc.monthly + adjPerAccount)
-  }
-
+  function effectiveRate(acc, sc) { return scenarioRate(acc.category, sc, acc.rateOverride) }
+  function effectiveMonthly(acc)  { return Math.max(0, acc.monthly + adjPerAccount) }
   function projectAcc(acc, sc, yrs) {
     return project(acc.balance, effectiveMonthly(acc), effectiveRate(acc, sc), yrs * 12)
   }
-
   function projectTotal(sc, yrs = horizon) {
     return accounts.reduce((s, a) => s + projectAcc(a, sc, yrs), 0)
   }
 
-  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0)
-  const totalMonthly = Math.max(0, accounts.reduce((s, a) => s + a.monthly, 0) + contribAdj)
+  const totalBalance  = accounts.reduce((s, a) => s + a.balance, 0)
+  const totalMonthly  = Math.max(0, accounts.reduce((s, a) => s + a.monthly, 0) + contribAdj)
+  const totalAnnual   = totalMonthly * 12
   const baseProjected = projectTotal('base')
+  const growth        = baseProjected - totalBalance - totalMonthly * 12 * horizon
+  const anyBalanceSet = accounts.some(a => a.balance > 0)
+
+  // annual growth in year 1 (returns only, no contributions)
+  const annualReturn1yr = totalBalance > 0
+    ? accounts.reduce((s, a) => s + a.balance * (effectiveRate(a, 'base') / 100), 0)
+    : 0
+
+  // weighted-average return rate (by balance when set, else simple average)
+  const avgReturnRate = totalBalance > 0
+    ? accounts.reduce((s, a) => s + (a.balance / totalBalance) * effectiveRate(a, 'base'), 0)
+    : accounts.reduce((s, a) => s + effectiveRate(a, 'base'), 0) / Math.max(accounts.length, 1)
 
   // chart data
   const chartCheckpoints = [0, 1, 2, 3, 5, 10, 15, 20, 25, 30]
@@ -173,15 +248,17 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
     optimistic:   Math.round(projectTotal('optimistic',   yr)),
   }))
 
+  // milestones table — relevant years up to horizon
+  const milestoneYears = MILESTONE_YEARS.filter(y => y <= Math.max(horizon, 30))
+
   // insights
   const insights = []
   if (totalMonthly > 0) {
-    insights.push(`You're putting away ${fmt(totalMonthly)}/month across ${accounts.length} account${accounts.length !== 1 ? 's' : ''}.`)
+    insights.push(`You're putting away ${fmt(totalMonthly)}/month (${fmt(totalAnnual)}/year) across ${accounts.length} account${accounts.length !== 1 ? 's' : ''}.`)
   }
   if (baseProjected > 0) {
     insights.push(`At your current rate your savings could grow to ${fmt(baseProjected)} in ${horizon} year${horizon !== 1 ? 's' : ''}.`)
   }
-  const growth = baseProjected - totalBalance - totalMonthly * 12 * horizon
   if (growth > 1) {
     const pct = Math.round((growth / Math.max(totalMonthly * 12 * horizon, 1)) * 100)
     insights.push(`Compound returns could add ${fmt(growth)} on top of contributions — about ${pct}% bonus from growth.`)
@@ -189,7 +266,7 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
   if (totalMonthly > 0 && horizon >= 5) {
     const boosted = accounts.reduce((s, a) =>
       s + project(a.balance, Math.max(0, a.monthly + adjPerAccount + 100 / n), effectiveRate(a, 'base'), horizon * 12), 0)
-    insights.push(`Adding $100/month to your savings would grow your total to ${fmt(boosted)} — ${fmt(boosted - baseProjected)} more.`)
+    insights.push(`Adding $100/month ($1,200/year) to your savings would grow your total to ${fmt(boosted)} — ${fmt(boosted - baseProjected)} more.`)
   }
   if (accounts.length > 1) {
     const top = accounts.reduce((best, a) => projectAcc(a, 'base', horizon) > projectAcc(best, 'base', horizon) ? a : best)
@@ -214,13 +291,28 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
     setShowGoalForm(false)
   }
 
+  function startEditGoal(goal) {
+    setEditingGoalId(goal.id)
+    setGoalDraft({ name: goal.name, target: String(goal.target), targetDate: goal.targetDate || '' })
+  }
+
+  function commitEditGoal() {
+    const t = parseFloat(goalDraft.target)
+    if (!goalDraft.name.trim() || !t) { setEditingGoalId(null); return }
+    setGoals(prev => prev.map(g => g.id === editingGoalId
+      ? { ...g, name: goalDraft.name.trim(), target: t, targetDate: goalDraft.targetDate }
+      : g
+    ))
+    setEditingGoalId(null)
+  }
+
   // ── empty state ──────────────────────────────────────────────────────────────
   if (accounts.length === 0) {
     return (
       <div className="w-full">
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-          <div className="w-12 h-12 rounded-full bg-[#0D7377]/10 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-6 h-6 text-[#0D7377]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="budgli-card rounded-xl p-12 text-center">
+          <div className="w-12 h-12 rounded-full bg-[#00C896]/10 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-[#00C896]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
           </div>
@@ -235,19 +327,19 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
   return (
     <div className="w-full space-y-5 print:space-y-4">
 
-      {/* Section E — Controls */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5 print:hidden">
+      {/* Controls */}
+      <div className="budgli-card rounded-xl p-5 print:hidden">
         <div className="flex flex-wrap items-center gap-6">
 
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Horizon</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] mb-2">Horizon</p>
             <div className="flex gap-1.5">
               {HORIZON_OPTIONS.map(y => (
                 <button
                   key={y}
                   onClick={() => setHorizon(y)}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    horizon === y ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    horizon === y ? 'bg-[#00C896] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   {y}yr
@@ -257,7 +349,7 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
           </div>
 
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contribution Adjustment</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] mb-2">Contribution Adjustment</p>
             <div className="flex items-center gap-1.5 flex-wrap">
               {[-250, -100, -50, 50, 100, 250].map(d => (
                 <button
@@ -294,50 +386,145 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
         </div>
       </div>
 
-      {/* Section A — Summary Cards */}
+      {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Total Saved</p>
-          <p className="text-2xl font-bold text-gray-900 tabular-nums">{fmt(totalBalance)}</p>
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] mb-1">Total Saved</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 tabular-nums leading-tight">{fmtW(totalBalance)}</p>
           <p className="text-xs text-gray-400 mt-1">{accounts.length} account{accounts.length !== 1 ? 's' : ''}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Saving / Month</p>
-          <p className="text-2xl font-bold text-gray-900 tabular-nums">{fmt(totalMonthly)}</p>
-          {contribAdj !== 0 && (
-            <p className={`text-xs mt-1 ${contribAdj > 0 ? 'text-green-600' : 'text-red-500'}`}>
-              {contribAdj > 0 ? '+' : ''}{fmt(contribAdj)} adj.
-            </p>
-          )}
+
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] mb-1">Saving Rate</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 tabular-nums leading-tight">
+            {fmtW(totalMonthly)}<span className="text-sm font-normal text-gray-400">/mo</span>
+          </p>
+          <p className="text-sm font-semibold text-gray-500 tabular-nums mt-0.5">
+            {fmtW(totalAnnual)}<span className="text-xs font-normal text-gray-400">/yr</span>
+          </p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Projected — {horizon}yr</p>
-          <p className="text-2xl font-bold text-[#0D7377] tabular-nums">{fmt(baseProjected)}</p>
+
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] mb-1">Projected — {horizon}yr</p>
+          <p className="text-xl sm:text-2xl font-bold text-[#00C896] tabular-nums leading-tight">{fmtW(baseProjected)}</p>
           <p className="text-xs text-gray-400 mt-1">base scenario</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Compound Growth</p>
-          <p className="text-2xl font-bold text-green-600 tabular-nums">{fmt(Math.max(0, growth))}</p>
-          <p className="text-xs text-gray-400 mt-1">returns on top</p>
+
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] mb-1">
+            {annualReturn1yr > 0 ? 'Est. Annual Returns' : 'Compound Growth'}
+          </p>
+          <p className="text-xl sm:text-2xl font-bold text-green-600 tabular-nums leading-tight">
+            {annualReturn1yr > 0 ? fmtW(annualReturn1yr) : fmtW(Math.max(0, growth))}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            {annualReturn1yr > 0 ? 'on current balance/yr' : 'returns on top of contributions'}
+          </p>
+          <p className="text-xs font-semibold text-green-500 mt-0.5">
+            {avgReturnRate.toFixed(1)}% avg return
+          </p>
         </div>
       </div>
 
       {/* Plain-English callout */}
-      <div className="bg-[#0D7377]/6 border border-[#0D7377]/20 rounded-xl px-5 py-3.5">
-        <p className="text-sm text-[#0D7377] font-medium leading-relaxed">
-          Saving <strong>{fmt(totalMonthly)}/month</strong>, your portfolio could reach{' '}
+      <div className="bg-[#00C896]/6 border border-[#00C896]/20 rounded-xl px-5 py-3.5">
+        <p className="text-sm text-[#00C896] font-medium leading-relaxed">
+          Saving <strong>{fmt(totalMonthly)}/month</strong> ({fmt(totalAnnual)}/year), your portfolio could reach{' '}
           <strong>{fmt(baseProjected)}</strong> in {horizon} year{horizon !== 1 ? 's' : ''}.
           {baseProjected > totalBalance * 1.5 && totalBalance > 0 &&
             ` That's ${(baseProjected / totalBalance).toFixed(1)}× your current savings.`}
         </p>
       </div>
 
-      {/* Section B — Scenario Range */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">
+      {/* Account Breakdown — balance entry + annual view */}
+      <div className="budgli-card rounded-xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Account Breakdown</p>
+            {!anyBalanceSet && (
+              <p className="text-xs text-amber-600 mt-0.5">
+                Enter your current balances below for accurate projections
+              </p>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 print:hidden">Click any value to edit</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50/40">
+                <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Account</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Current Balance</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">/Month</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">/Year</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Rate</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">In {horizon}yr</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map(acc => {
+                const displayRate = acc.rateOverride !== null ? acc.rateOverride : defaultRate(acc.category)
+                return (
+                  <tr key={acc.key} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                    <td className="px-5 py-3">
+                      <span className="font-medium text-gray-800">{acc.name}</span>
+                      <span className="text-xs text-gray-400 ml-2">{acc.category}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <InlineEdit
+                        value={acc.balance}
+                        prefix="$"
+                        isBalance
+                        onSave={v => setBalances(prev => ({ ...prev, [acc.key]: v }))}
+                        className="text-gray-800 font-medium"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-700 tabular-nums">{fmt(acc.monthly)}</td>
+                    <td className="px-4 py-3 text-right text-gray-500 tabular-nums text-xs">{fmt(acc.monthly * 12)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="inline-flex items-center gap-1">
+                        <InlineEdit
+                          value={displayRate}
+                          suffix="%"
+                          onSave={v => setRateOverrides(prev => ({ ...prev, [acc.key]: v }))}
+                          className={acc.rateOverride !== null ? 'font-semibold text-[#00C896]' : 'text-gray-500'}
+                        />
+                        {acc.rateOverride !== null && (
+                          <button
+                            onClick={() => setRateOverrides(prev => { const n = { ...prev }; delete n[acc.key]; return n })}
+                            className="text-gray-300 hover:text-red-400 transition-colors text-xs print:hidden"
+                            title="Reset to default"
+                          >✕</button>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-[#00C896] tabular-nums">
+                      {fmt(projectAcc(acc, scenario, horizon))}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-50/60 border-t border-gray-100">
+                <td className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</td>
+                <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800 tabular-nums">{fmt(totalBalance)}</td>
+                <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800 tabular-nums">{fmt(totalMonthly)}</td>
+                <td className="px-4 py-3 text-right text-sm font-semibold text-gray-600 tabular-nums">{fmt(totalAnnual)}</td>
+                <td className="px-4 py-3" />
+                <td className="px-4 py-3 text-right text-sm font-bold text-[#00C896] tabular-nums">{fmt(projectTotal(scenario))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* Scenario Range */}
+      <div className="budgli-card rounded-xl p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] mb-4">
           Scenario Range at {horizon} Year{horizon !== 1 ? 's' : ''}
         </p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {SCENARIOS.map(sc => {
             const val = projectTotal(sc.id)
             const active = scenario === sc.id
@@ -361,14 +548,14 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
         </div>
       </div>
 
-      {/* Section D — Chart */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Growth Projection</p>
+      {/* Growth Chart */}
+      <div className="budgli-card rounded-xl p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] mb-4">Growth Projection</p>
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 4, left: 8 }}>
             <XAxis
               dataKey="year"
-              tickFormatter={y => `${y}yr`}
+              tickFormatter={y => `yr ${y}`}
               tick={{ fontSize: 11, fill: '#9CA3AF' }}
               axisLine={false}
               tickLine={false}
@@ -390,93 +577,91 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
               formatter={k => SCENARIOS.find(s => s.id === k)?.label || k}
               wrapperStyle={{ fontSize: 12 }}
             />
-            <Line type="monotone" dataKey="conservative" stroke="#F59E0B" strokeWidth={1.5} dot={false} strokeDasharray="5 3" />
-            <Line type="monotone" dataKey="base"         stroke="#0D7377" strokeWidth={2}   dot={false} />
-            <Line type="monotone" dataKey="optimistic"   stroke="#14A085" strokeWidth={1.5} dot={false} strokeDasharray="5 3" />
+            <Line type="monotone" dataKey="conservative" stroke="#F59E0B" strokeWidth={1.5} dot={false} strokeDasharray="5 3" animationDuration={600} animationEasing="ease-out" />
+            <Line type="monotone" dataKey="base"         stroke="#00C896" strokeWidth={2}   dot={false} animationDuration={600} animationEasing="ease-out" />
+            <Line type="monotone" dataKey="optimistic"   stroke="#0D9488" strokeWidth={1.5} dot={false} strokeDasharray="5 3" animationDuration={600} animationEasing="ease-out" />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Section C — Account Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Account Breakdown</p>
-          <p className="text-xs text-gray-400 print:hidden">Click balance or rate % to edit</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">Account</th>
-                <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-400 uppercase tracking-wide">Balance</th>
-                <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-400 uppercase tracking-wide">/Month</th>
-                <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-400 uppercase tracking-wide">Rate</th>
-                <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-400 uppercase tracking-wide">In {horizon}yr</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map(acc => {
-                const displayRate = acc.rateOverride !== null ? acc.rateOverride : defaultRate(acc.category)
-                return (
-                  <tr key={acc.key} className="border-b border-gray-50 last:border-0">
-                    <td className="px-5 py-3">
-                      <span className="font-medium text-gray-800">{acc.name}</span>
-                      <span className="text-xs text-gray-400 ml-2">{acc.category}</span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <InlineEdit
-                        value={acc.balance}
-                        prefix="$"
-                        onSave={v => setBalances(prev => ({ ...prev, [acc.key]: v }))}
-                        className="text-gray-800"
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-700 tabular-nums">{fmt(acc.monthly)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="inline-flex items-center gap-1">
-                        <InlineEdit
-                          value={displayRate}
-                          suffix="%"
-                          onSave={v => setRateOverrides(prev => ({ ...prev, [acc.key]: v }))}
-                          className={acc.rateOverride !== null ? 'font-semibold text-[#0D7377]' : 'text-gray-500'}
-                        />
-                        {acc.rateOverride !== null && (
-                          <button
-                            onClick={() => setRateOverrides(prev => { const n = { ...prev }; delete n[acc.key]; return n })}
-                            className="text-gray-300 hover:text-red-400 transition-colors text-xs print:hidden"
-                            title="Reset to default"
-                          >✕</button>
-                        )}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-[#0D7377] tabular-nums">
-                      {fmt(projectAcc(acc, scenario, horizon))}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-gray-50/60">
-                <td className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800 tabular-nums">{fmt(totalBalance)}</td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800 tabular-nums">{fmt(totalMonthly)}</td>
-                <td className="px-4 py-3" />
-                <td className="px-4 py-3 text-right text-sm font-bold text-[#0D7377] tabular-nums">{fmt(projectTotal(scenario))}</td>
-              </tr>
-            </tfoot>
-          </table>
+      {/* Annual Milestones — collapsed by default */}
+      <div>
+        <button
+          onClick={() => setMilestonesOpen(o => !o)}
+          className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <svg
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${milestonesOpen ? 'rotate-90' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          {milestonesOpen ? 'Hide breakdown' : 'Show full breakdown →'}
+        </button>
+
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+          style={{ gridTemplateRows: milestonesOpen ? '1fr' : '0fr' }}
+        >
+          <div className="overflow-hidden">
+            <div className="budgli-card rounded-xl overflow-hidden mt-3">
+              <div className="px-5 py-3 border-b border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Annual Milestones</p>
+                <p className="text-xs text-gray-400 mt-0.5">Projected portfolio value by year — all three scenarios</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/40">
+                      <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Year</th>
+                      <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Annual Contributions</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-[#F59E0B] uppercase tracking-wide">Conservative</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-[#00C896] uppercase tracking-wide">Base</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-[#0D9488] uppercase tracking-wide">Optimistic</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {milestoneYears.map(yr => {
+                      const cons = projectTotal('conservative', yr)
+                      const base = projectTotal('base', yr)
+                      const opti = projectTotal('optimistic', yr)
+                      const isHorizon = yr === horizon
+                      return (
+                        <tr
+                          key={yr}
+                          className={`border-b border-gray-50 last:border-0 ${isHorizon ? 'bg-[#00C896]/5' : 'hover:bg-gray-50/50'} transition-colors`}
+                        >
+                          <td className="px-5 py-3">
+                            <span className={`font-medium ${isHorizon ? 'text-[#00C896]' : 'text-gray-700'}`}>
+                              Year {yr}
+                            </span>
+                            {isHorizon && <span className="ml-2 text-[10px] font-semibold text-[#00C896] uppercase tracking-wide bg-[#00C896]/10 px-1.5 py-0.5 rounded-full">horizon</span>}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-500 tabular-nums text-xs">
+                            {fmt(totalAnnual * yr)}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums font-medium text-amber-600">{fmt(cons)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#00C896]">{fmt(base)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums font-medium text-[#0D9488]">{fmt(opti)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Section G — Insights */}
+      {/* Insights */}
       {insights.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Insights</p>
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] mb-4">Insights</p>
           <ul className="space-y-3">
             {insights.map((text, i) => (
               <li key={i} className="flex items-start gap-3">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#0D7377] mt-2 shrink-0" />
+                <div className="w-1.5 h-1.5 rounded-full bg-[#00C896] mt-2 shrink-0" />
                 <p className="text-sm text-gray-700 leading-relaxed">{text}</p>
               </li>
             ))}
@@ -484,13 +669,13 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
         </div>
       )}
 
-      {/* Section F — Savings Goals */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
+      {/* Savings Goals */}
+      <div className="budgli-card rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Savings Goals</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Savings Goals</p>
           <button
             onClick={() => setShowGoalForm(f => !f)}
-            className="text-xs font-medium text-[#0D7377] hover:text-[#0b6165] transition-colors print:hidden"
+            className="text-xs font-medium text-[#00C896] hover:text-[#0b6165] transition-colors print:hidden"
           >
             {showGoalForm ? 'Cancel' : '+ Add Goal'}
           </button>
@@ -506,12 +691,12 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
                 onChange={e => setNewGoal(g => ({ ...g, name: e.target.value }))}
                 onKeyDown={e => e.key === 'Enter' && addGoal()}
                 placeholder="e.g. House down payment"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0D7377] transition-colors"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#00C896] transition-colors"
               />
             </div>
             <div className="w-40">
               <label className="block text-xs text-gray-500 mb-1.5">Target Amount</label>
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
+              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#00C896] transition-colors">
                 <span className="px-2.5 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
                 <input
                   type="number"
@@ -528,13 +713,13 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
                 type="date"
                 value={newGoal.targetDate}
                 onChange={e => setNewGoal(g => ({ ...g, targetDate: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#0D7377] transition-colors"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#00C896] transition-colors"
               />
             </div>
             <button
               onClick={addGoal}
               disabled={!newGoal.name.trim() || !newGoal.target}
-              className="px-5 py-2.5 bg-[#0D7377] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-5 py-2.5 bg-[#00C896] text-white text-sm font-medium rounded-lg hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Add
             </button>
@@ -546,13 +731,78 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
         )}
 
         {goals.map(goal => {
-          const pct    = Math.min(100, totalBalance > 0 ? (totalBalance / goal.target) * 100 : 0)
-          const status = goalStatus(goal)
+          const isEditing = editingGoalId === goal.id
+          const pct       = Math.min(100, totalBalance > 0 ? (totalBalance / goal.target) * 100 : 0)
+          const status    = goalStatus(goal)
+
+          if (isEditing) {
+            return (
+              <div key={goal.id} className="py-3.5 border-b border-gray-50 last:border-0">
+                <div className="flex gap-3 items-end flex-wrap">
+                  <div className="flex-1 min-w-32">
+                    <label className="block text-xs text-gray-500 mb-1.5">Goal Name</label>
+                    <input
+                      autoFocus
+                      type="text"
+                      value={goalDraft.name}
+                      onChange={e => setGoalDraft(d => ({ ...d, name: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') commitEditGoal(); if (e.key === 'Escape') setEditingGoalId(null) }}
+                      className="w-full border border-[#00C896] rounded-lg px-3 py-2 text-sm outline-none"
+                    />
+                  </div>
+                  <div className="w-36">
+                    <label className="block text-xs text-gray-500 mb-1.5">Target Amount</label>
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#00C896] transition-colors">
+                      <span className="px-2.5 py-2 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
+                      <input
+                        type="number"
+                        value={goalDraft.target}
+                        onChange={e => setGoalDraft(d => ({ ...d, target: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') commitEditGoal(); if (e.key === 'Escape') setEditingGoalId(null) }}
+                        className="flex-1 px-2.5 py-2 text-sm outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="w-40">
+                    <label className="block text-xs text-gray-500 mb-1.5">Target Date</label>
+                    <input
+                      type="date"
+                      value={goalDraft.targetDate}
+                      onChange={e => setGoalDraft(d => ({ ...d, targetDate: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') commitEditGoal(); if (e.key === 'Escape') setEditingGoalId(null) }}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#00C896] transition-colors"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={commitEditGoal}
+                      className="px-4 py-2 bg-[#00C896] text-white text-xs font-medium rounded-lg hover:bg-[#0b6165] transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingGoalId(null)}
+                      className="px-4 py-2 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
           return (
             <div key={goal.id} className="flex items-start gap-4 py-3.5 border-b border-gray-50 last:border-0">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="text-sm font-semibold text-gray-800">{goal.name}</span>
+                  <button
+                    onClick={() => startEditGoal(goal)}
+                    className="text-sm font-semibold text-gray-800 hover:text-[#00C896] transition-colors text-left"
+                    title="Click to edit"
+                  >
+                    {goal.name}
+                  </button>
                   {status && (
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                       status.onTrack ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
@@ -571,17 +821,28 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
                 </div>
                 <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#0D7377] rounded-full transition-all"
+                    className="h-full bg-[#00C896] rounded-full transition-all"
                     style={{ width: `${pct.toFixed(1)}%` }}
                   />
                 </div>
                 <p className="text-xs text-gray-400 mt-1">{pct.toFixed(0)}% of goal saved</p>
               </div>
-              <button
-                onClick={() => setGoals(g => g.filter(x => x.id !== goal.id))}
-                className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none shrink-0 mt-0.5 print:hidden"
-                title="Remove"
-              >✕</button>
+              <div className="flex items-center gap-2 shrink-0 mt-0.5 print:hidden">
+                <button
+                  onClick={() => startEditGoal(goal)}
+                  className="text-gray-300 hover:text-[#00C896] transition-colors"
+                  title="Edit"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a4 4 0 01-1.414.914l-3.414.5.5-3.414A4 4 0 019 13z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setGoals(g => g.filter(x => x.id !== goal.id))}
+                  className="text-gray-300 hover:text-red-400 transition-colors text-base leading-none"
+                  title="Remove"
+                >✕</button>
+              </div>
             </div>
           )
         })}

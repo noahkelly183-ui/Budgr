@@ -1,15 +1,23 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
+import { Analytics, track } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import { createPortal } from 'react-dom'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 import { supabase } from './supabase.js'
 import { DEMO_TRANSACTIONS, DEMO_FIXED_COSTS, DEMO_SAVINGS_ENTRIES, DEMO_SALARY, DEMO_YEAR } from './data/demoData.js'
+import AuthScreen from './components/AuthScreen.jsx'
 import EmptyState from './components/EmptyState.jsx'
 import SavingsForecastPage from './components/SavingsForecastPage.jsx'
 import HelpTip from './components/HelpTip.jsx'
 import Privacy from './pages/Privacy.jsx'
+import FeedbackPage from './components/FeedbackPage.jsx'
+import GoalOnboarding from './components/GoalOnboarding.jsx'
 import { TrendingUp, TrendingDown, PiggyBank, Percent, CalendarDays, BarChart3, Wallet, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ReferenceLine, LineChart, Line, PieChart, Pie, ResponsiveContainer } from 'recharts'
+import { parseCSV, detectFormat, parseForMapper, normalizeWithMapping } from './utils/csvParsers.js'
+import CsvImportPreview from './components/CsvImportPreview.jsx'
+import CsvColumnMapper  from './components/CsvColumnMapper.jsx'
 
 const CATEGORIES = [
   'Bars & Nightlife', 'Car Payment / Insurance', 'Clothing', 'Coffee & Drinks',
@@ -33,39 +41,6 @@ const savingCatLabel = cat => {
   const upper = cat.toUpperCase()
   if (upper === 'RRSP' || upper === 'TFSA') return upper
   return cat.replace(/\b\w/g, c => c.toUpperCase())
-}
-const CC_PAYMENT_KEYWORDS = ['PAYMENT - THANK YOU', 'PAI EMENT', 'PAYMENT RECEIVED', 'AUTOPAY']
-
-const RULES = [
-  { keywords: ['UBER', 'LYFT'],                                                           category: 'Transit / Rideshare' },
-  { keywords: ['PETRO', 'ESSO', 'SHELL', 'CHEVRON', 'HUSKY', 'PIONEER', 'GAS BAR'],      category: 'Fuel' },
-  { keywords: ['STARBUCKS', 'TIM HORTON', 'SECOND CUP', 'BLENZ', 'COFFEE'],              category: 'Coffee & Drinks' },
-  { keywords: ['MCDONALD', 'WENDY', 'BURGER KING', 'SUBWAY', 'A&W', 'PIZZA', 'DOMINO',
-               'KFC', 'TACO BELL', 'EARLS', 'BOSTON PIZZA', 'RESTAURANT', 'SUSHI',
-               'POKE', 'TST-', 'SQ *'],                                                    category: 'Dining Out' },
-  { keywords: ['WAL-MART', 'WALMART', 'COSTCO', 'SUPERSTORE', 'SAFEWAY', 'THRIFTY',
-               'FAIRWAY', 'SAVE-ON', 'SAVE ON', 'LOBLAWS', 'SOBEYS', 'BULK BARN',
-               'WHOLE FOODS', 'MARKET'],                                                   category: 'Groceries' },
-  { keywords: ['FITNESS', 'GYM', 'YMCA', 'GOODLIFE', 'ANYTIME FITNESS', 'CROSSFIT'],     category: 'Fitness & Gym' },
-  { keywords: ['MICROSOFT', 'NETFLIX', 'SPOTIFY', 'APPLE.COM', 'GOOGLE', 'AMAZON PRIME',
-               'DISNEY', 'XBOX', 'PLAYSTATION', 'GAME PASS', 'ADOBE', 'DROPBOX'],        category: 'Subscriptions' },
-  { keywords: ['ROGERS', 'TELUS', 'BELL', 'FIDO', 'KOODO', 'VIRGIN MOBILE', 'SHAW',
-               'VIDEOTRON', 'FREEDOM MOBILE'],                                             category: 'Phone & Internet' },
-  { keywords: ['SHOPPERS', 'REXALL', 'LONDON DRUGS', 'PHARMACY', 'MEDICAL', 'CLINIC',
-               'DENTAL', 'OPTOM'],                                                         category: 'Health & Medical' },
-  { keywords: ['LIQUOR', 'BREWERY', 'BREWING', 'DISTILLERY', 'WINERY', 'WINE', 'BEER',
-               'PUB', 'BAR', 'NIGHTCLUB', 'LOUNGE', 'TAVERN', 'CASCADE', 'BRASSERIE'],   category: 'Bars & Nightlife' },
-  { keywords: ['APPLE STORE', 'STAPLES'],                                                  category: 'Home & Garden' },
-  { keywords: ['AMAZON', 'EBAY', 'ETSY', 'BEST BUY', 'BESTBUY', 'IKEA', 'TARGET',
-               'HOMESENSE', 'WINNERS', 'MARSHALLS', 'HOME DEPOT', 'CANADIAN TIRE'],       category: 'Shopping' },
-]
-
-function guessCategory(description) {
-  const upper = description.toUpperCase()
-  for (const { keywords, category } of RULES) {
-    if (keywords.some(k => upper.includes(k))) return category
-  }
-  return ''
 }
 
 const NOISE = new Set([
@@ -95,7 +70,7 @@ const CATEGORY_GROUPS = [
   { name: 'Lifestyle',       hex: '#A855F7', cats: ['Clothing', 'Entertainment', 'Hobbies & Sports', 'Shopping', 'Personal Care', 'Gifts & Donations'] },
   { name: 'Bills & Finance', hex: '#3B82F6', cats: ['Phone & Internet', 'Subscriptions', 'Insurance', 'Loan Repayments', 'Fees & Charges'] },
   { name: 'Health & Growth', hex: '#EC4899', cats: ['Health & Medical', 'Fitness & Gym', 'Education'] },
-  { name: 'Savings',         hex: '#14A085', cats: ['Investments', 'Savings', 'Savings Transfer', 'RRSP', 'TFSA', 'Emergency Fund'] },
+  { name: 'Savings',         hex: '#00C896', cats: ['Investments', 'Savings', 'Savings Transfer', 'RRSP', 'TFSA', 'Emergency Fund'] },
 ]
 
 const CATEGORY_COLOR = Object.fromEntries(
@@ -147,32 +122,36 @@ const MONTHS = [
 
 const NAV_SECTIONS = [
   {
-    heading: 'OVERVIEW',
+    heading: 'DASHBOARDS',
     items: [
       { id: 'get-started',      label: 'Get Started',       icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
       { id: 'dashboard',        label: 'Monthly Dashboard', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
       { id: 'annual',           label: 'Annual Summary',    icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-      { id: 'savings-forecast', label: 'Savings Forecast', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
+      { id: 'savings-forecast', label: 'Savings Forecast',  icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
       { id: 'year-comparison',  label: 'Year Comparison',   icon: 'M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4' },
       { id: 'categories',       label: 'Categories',        icon: 'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z' },
     ],
   },
   {
-    heading: 'SPENDING',
+    heading: 'MY DATA',
     items: [
-      { id: 'salary',       label: 'Salary',       icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
-      { id: 'fixed',        label: 'Fixed Costs',  icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-      { id: 'transactions', label: 'Transactions', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
-      { id: 'savings',      label: 'Savings',      icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z' },
-    ],
-  },
-  {
-    heading: 'ACCOUNT',
-    items: [
-      { id: 'settings', label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
+      { id: 'salary',       label: 'Income',           icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+      { id: 'fixed',        label: 'Fixed Costs',      icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+      { id: 'transactions', label: 'Transactions',     icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
+      { id: 'savings',      label: 'Savings Accounts', icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z' },
     ],
   },
 ]
+
+const NAV_FOOTER_ITEMS = [
+  { id: 'settings', label: 'Settings',        icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
+  { id: 'feedback', label: 'Share feedback',  icon: 'M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z' },
+]
+
+function titleCaseDesc(str) {
+  if (!str) return str
+  return str.toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase())
+}
 
 function monthOf(date) {
   if (!date) return ''
@@ -199,14 +178,6 @@ const fmtK = n => n >= 1000 ? '$' + (n / 1000).toFixed(1) + 'k' : n > 0 ? '$' + 
 
 const APP_YEAR = '2026'
 
-// Converts M/D/YYYY or MM/DD/YYYY → YYYY-MM-DD; already-ISO dates pass through unchanged
-function normalizeDate(dateStr) {
-  if (!dateStr) return ''
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr
-  const us = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (us) return `${us[3]}-${us[1].padStart(2, '0')}-${us[2].padStart(2, '0')}`
-  return dateStr
-}
 
 // Returns "YYYY-MM" from a normalized ISO date — never does partial string matching
 function yearMonthOf(isoDate) {
@@ -221,7 +192,7 @@ function yearMonthOf(isoDate) {
 // are treated as start_month=1 (effective from the beginning of the year).
 function getActiveForMonth(entries, year, month) {
   const m = typeof month === 'string' ? parseInt(month, 10) : month
-  const yearEntries = entries.filter(c => !c.year || c.year === year)
+  const yearEntries = entries.filter(c => !c.year || String(c.year) === String(year))
   const valid = yearEntries.filter(c => (c.start_month ?? 1) <= m)
   const grouped = new Map()
   for (const c of valid) {
@@ -236,13 +207,16 @@ function getActiveForMonth(entries, year, month) {
 
 // ─── CategoryCombobox ────────────────────────────────────────────────────────
 
-function CategoryCombobox({ value, onChange }) {
+function CategoryCombobox({ value, onChange, suggestions = [] }) {
   const [open, setOpen]   = useState(false)
   const [query, setQuery] = useState('')
   const [pos, setPos]     = useState({ top: 0, left: 0, width: 192 })
   const wrapRef           = useRef(null)
 
-  const filtered = CATEGORIES.filter(c =>
+  // Previously-used custom categories (not in the built-in list) shown first
+  const customOpts = suggestions.filter(s => s && !CATS_SET.has(s))
+  const allOpts    = [...customOpts, ...CATEGORIES]
+  const filtered   = allOpts.filter(c =>
     !query || c.toLowerCase().includes(query.toLowerCase())
   )
 
@@ -308,17 +282,21 @@ function CategoryCombobox({ value, onChange }) {
           style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
           className="bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto py-1"
         >
-          {filtered.map(cat => (
-            <li key={cat}>
-              <button
-                onMouseDown={e => { e.preventDefault(); select(cat) }}
-                className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700"
-              >
-                {cat}
-              </button>
-            </li>
-          ))}
-          {query.trim() && !CATEGORIES.includes(query.trim()) && (
+          {filtered.map(cat => {
+            const isCustom = customOpts.includes(cat)
+            return (
+              <li key={cat}>
+                <button
+                  onMouseDown={e => { e.preventDefault(); select(cat) }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-1.5"
+                >
+                  {isCustom && <span className="w-1.5 h-1.5 rounded-full bg-[#00C896] shrink-0" />}
+                  {cat}
+                </button>
+              </li>
+            )
+          })}
+          {query.trim() && !allOpts.includes(query.trim()) && (
             <li className="border-t border-gray-100">
               <button
                 onMouseDown={e => { e.preventDefault(); select(query.trim()) }}
@@ -347,6 +325,7 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
   const omittedCount   = yearTxns.filter(t => t.category === 'Omit').length
   const highValueCount = yearTxns.filter(t => t.type === 'debit' && t.amount > 200).length
   const availableCats  = [...new Set(yearTxns.map(t => t.category).filter(Boolean))].sort()
+  const customCats     = [...new Set(txns.map(t => t.category).filter(c => c && !CATS_SET.has(c)))].sort()
 
   function setF(f) { setFilter(f); if (f !== 'category') setCatFilter('') }
 
@@ -385,39 +364,39 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
         {/* Filter bar */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
 
-          <button onClick={() => setF('all')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'all' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+          <button onClick={() => setF('all')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'all' ? 'bg-[#1A1F2E] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
             All
           </button>
 
-          <button onClick={() => setF('untagged')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'untagged' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+          <button onClick={() => setF('untagged')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'untagged' ? 'bg-[#1A1F2E] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
             Untagged
-            {untaggedCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'untagged' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-600'}`}>{untaggedCount}</span>}
+            {untaggedCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'untagged' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>{untaggedCount}</span>}
           </button>
 
-          <button onClick={() => setF('manual')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'manual' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+          <button onClick={() => setF('manual')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'manual' ? 'bg-[#1A1F2E] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
             Manually Tagged
-            {manualCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'manual' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-600'}`}>{manualCount}</span>}
+            {manualCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'manual' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>{manualCount}</span>}
           </button>
 
-          <button onClick={() => setF('omitted')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'omitted' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+          <button onClick={() => setF('omitted')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'omitted' ? 'bg-[#1A1F2E] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
             Omitted
             {omittedCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'omitted' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>{omittedCount}</span>}
           </button>
 
-          <button onClick={() => setF('highvalue')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'highvalue' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+          <button onClick={() => setF('highvalue')} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'highvalue' ? 'bg-[#1A1F2E] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
             High Value
-            {highValueCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'highvalue' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-600'}`}>{highValueCount}</span>}
+            {highValueCount > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${filter === 'highvalue' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>{highValueCount}</span>}
           </button>
 
           <div className="flex items-center gap-1.5">
-            <button onClick={() => setF('category')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'category' ? 'bg-[#0D7377] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
+            <button onClick={() => setF('category')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === 'category' ? 'bg-[#1A1F2E] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-700'}`}>
               Category ▾
             </button>
             {filter === 'category' && (
               <select
                 value={catFilter}
                 onChange={e => setCatFilter(e.target.value)}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#0D7377]"
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#00C896]"
               >
                 <option value="">— pick one —</option>
                 {availableCats.map(c => <option key={c} value={c}>{c}</option>)}
@@ -455,20 +434,20 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
 
         {/* Transaction list */}
         <div>
-          {/* Column headers */}
+          {/* Column headers — desktop only */}
           <div
-            className="bg-white border border-gray-100 rounded-t-xl grid px-4 py-3"
+            className="hidden md:grid bg-white border border-gray-100 rounded-t-xl px-4 py-3"
             style={{ gridTemplateColumns: COLS }}
           >
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Date</span>
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Description</span>
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide text-right pr-2">Amount</span>
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Category</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Date</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Description</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0] text-right pr-2">Amount</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#8896B0]">Category</span>
           </div>
 
           {groups.length === 0 ? (
             filter === 'all' ? (
-              <div className="border border-gray-100 border-t-0 rounded-b-xl overflow-hidden">
+              <div className="border border-gray-100 md:border-t-0 rounded-xl md:rounded-t-none md:rounded-b-xl overflow-hidden">
                 <EmptyState
                   icon="🏦"
                   title="No transactions yet"
@@ -478,7 +457,7 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
                 />
               </div>
             ) : (
-              <div className="bg-white border border-gray-100 border-t-0 rounded-b-xl px-4 py-8 text-center text-gray-400 text-xs">
+              <div className="bg-white border border-gray-100 md:border-t-0 rounded-xl md:rounded-t-none md:rounded-b-xl px-4 py-8 text-center text-gray-400 text-xs">
                 {filter === 'untagged'   ? 'All transactions are tagged!' :
                  filter === 'manual'     ? 'No manually tagged transactions yet' :
                  filter === 'omitted'    ? 'No omitted transactions' :
@@ -494,17 +473,38 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
             return (
               <div key={group.ym}>
                 {/* Month header */}
-                <div className="flex items-center justify-between px-4 py-2.5 border-x border-gray-100 bg-[#1A1A2E]">
-                  <span className="text-white text-xs font-semibold tracking-wide">{groupLabel(group.ym)}</span>
-                  <div className="flex items-center gap-2 text-white/60 text-xs">
+                <div className="flex items-center justify-between px-4 py-2.5 border border-gray-100 md:border-x md:border-y-0 md:border-t md:border-b-0 bg-gray-50 mt-2 md:mt-0 rounded-t-xl md:rounded-none">
+                  <span className="text-gray-700 text-xs font-semibold tracking-wide">{groupLabel(group.ym)}</span>
+                  <div className="flex items-center gap-2 text-gray-400 text-xs">
                     <span>{group.txns.length} transaction{group.txns.length !== 1 ? 's' : ''}</span>
                     <span aria-hidden="true">·</span>
-                    <span className="font-medium text-white/80">{fmt(groupSpend)}</span>
+                    <span className="font-semibold text-gray-600">{fmt(groupSpend)}</span>
                   </div>
                 </div>
 
-                {/* Transaction rows */}
-                <div className={`border-x border-gray-100 ${isLast ? 'border-b rounded-b-xl' : ''}`}>
+                {/* Mobile card rows */}
+                <div className={`md:hidden border border-t-0 border-gray-100 ${isLast ? 'rounded-b-xl' : ''}`}>
+                  {group.txns.map(t => (
+                    <div key={t.id} className="px-4 py-3 border-b border-gray-50 last:border-b-0 bg-white">
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {t.fromMemory && <span className="w-1.5 h-1.5 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: '#00C896' }} />}
+                          <span className="text-sm text-gray-700 leading-snug">{titleCaseDesc(t.description)}</span>
+                        </div>
+                        <span className={`text-sm font-semibold tabular-nums shrink-0 ${t.type === 'credit' ? 'text-[#00C896]' : 'text-gray-800'}`}>
+                          {t.type === 'credit' ? '↑ ' : ''}{fmt(t.amount)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-gray-400">{fmtDate(t.date)}</span>
+                        <CategoryCombobox value={t.category} onChange={cat => setCategory(t.id, cat)} suggestions={customCats} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop grid rows */}
+                <div className={`hidden md:block border-x border-gray-100 ${isLast ? 'border-b rounded-b-xl' : ''}`}>
                   {group.txns.map((t, i) => (
                     <div
                       key={t.id}
@@ -514,7 +514,7 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
                       style={{ gridTemplateColumns: COLS }}
                     >
                       <span className="text-gray-500 text-xs whitespace-nowrap">{fmtDate(t.date)}</span>
-                      <span className="text-gray-700 text-sm pr-3 min-w-0 truncate">{t.description}</span>
+                      <span className="text-gray-700 text-sm pr-3 min-w-0 truncate">{titleCaseDesc(t.description)}</span>
                       <span className="flex items-center justify-end gap-1 tabular-nums pr-2">
                         <span className={`text-xs font-bold ${t.type === 'credit' ? 'text-green-500' : 'text-red-400'}`}>
                           {t.type === 'credit' ? '↑' : '↓'}
@@ -525,9 +525,9 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
                       </span>
                       <div className="flex items-center gap-1.5">
                         {t.fromMemory && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" title="Auto-categorized from memory" />
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: '#00C896' }} title="Auto-categorized from memory" />
                         )}
-                        <CategoryCombobox value={t.category} onChange={cat => setCategory(t.id, cat)} />
+                        <CategoryCombobox value={t.category} onChange={cat => setCategory(t.id, cat)} suggestions={customCats} />
                       </div>
                     </div>
                   ))}
@@ -539,6 +539,24 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
 
     </div>
   )
+}
+
+// ─── CatIcon — shared category SVG icon ──────────────────────────────────────
+
+function CatIcon({ name, hex, size = 'w-4 h-4' }) {
+  const s  = { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', strokeWidth: 1.8, className: `${size} shrink-0`, style: { color: hex } }
+  const lp = { strokeLinecap: 'round', strokeLinejoin: 'round' }
+  if (name === 'Housing')           return <svg {...s}><path {...lp} d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/></svg>
+  if (name === 'Transport')         return <svg {...s}><path {...lp} d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/><path {...lp} d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"/></svg>
+  if (name === 'Food & Drink')      return <svg {...s}><path {...lp} d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z"/><path {...lp} d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.546 5.974 5.974 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z"/></svg>
+  if (name === 'Lifestyle')         return <svg {...s}><path {...lp} d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0zm5.625 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0z"/></svg>
+  if (name === 'Bills & Finance')   return <svg {...s}><path {...lp} d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z"/></svg>
+  if (name === 'Health & Growth')   return <svg {...s}><path {...lp} d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/></svg>
+  if (name === 'Fixed Costs')       return <svg {...s}><path {...lp} d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 9v7.5"/></svg>
+  if (name === 'Savings')           return <svg {...s}><path {...lp} d="M2.25 18 9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.519l2.74-1.22m0 0-5.94-2.28m5.94 2.28-2.28 5.941"/></svg>
+  if (name === 'Custom Tags')       return <svg {...s}><path {...lp} d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z"/><path {...lp} d="M6 6h.008v.008H6V6Z"/></svg>
+  if (name === 'Custom Categories') return <svg {...s}><path {...lp} d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"/></svg>
+  return <svg {...s}><path {...lp} d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75zm6.75-4.5c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625zm6.75-4.5c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125z"/></svg>
 }
 
 // ─── CategoriesPage ──────────────────────────────────────────────────────────
@@ -613,12 +631,14 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
   }
 
   // Build the card list: fixed costs + spending groups + custom tags + custom categories + savings
+  const noTxns = monthsWithData === 0
   const cards = [
     {
       name: 'Fixed Costs',
       hex: '#6B7280',
-      items: fixedCostItems.map(c => [c.name, monthsWithData > 0 ? monthlyRate(c) * monthsWithData : 0]),
-      total: fixedYTD,
+      items: fixedCostItems.map(c => [c.name, noTxns ? monthlyRate(c) : monthlyRate(c) * monthsWithData]),
+      total: noTxns ? fixedMonthlyTotal : fixedYTD,
+      totalLabel: noTxns ? '/mo' : 'YTD',
       emptyMsg: 'No fixed costs entered',
     },
     ...spendingGroups.map(g => ({
@@ -643,9 +663,12 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
     }] : []),
     {
       name: 'Savings',
-      hex: '#0D7377',
-      items: savingsCatEntries,
-      total: savingsYTD,
+      hex: '#00C896',
+      items: noTxns
+        ? Object.entries(savingsByCategory).map(([cat, monthly]) => [cat, monthly]).sort(([,a],[,b]) => b - a)
+        : savingsCatEntries,
+      total: noTxns ? Object.values(savingsByCategory).reduce((s, v) => s + v, 0) : savingsYTD,
+      totalLabel: noTxns ? '/mo' : 'YTD',
       emptyMsg: 'No savings entries',
       accent: true,
     },
@@ -668,20 +691,23 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
-        <p className="text-sm font-semibold text-gray-800">Categories — {selectedYear} YTD</p>
-        {monthsWithData > 0 && (
-          <span className="text-xs text-gray-400">({monthsWithData} mo)</span>
-        )}
+        <p className="text-sm font-semibold text-gray-800">Categories — {selectedYear} {noTxns ? '' : 'YTD'}</p>
+        {monthsWithData > 0
+          ? <span className="text-xs text-gray-400">({monthsWithData} mo)</span>
+          : <span className="text-xs text-gray-400">— showing monthly rates (no transactions yet)</span>
+        }
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map(card => (
-          <div key={card.name} className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col">
+          <div key={card.name} className="budgli-card rounded-xl p-5 flex flex-col">
 
             {/* Card header */}
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: card.hex }} />
+              <div className="flex items-center gap-2.5">
+                <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: card.hex + '22' }}>
+                  <CatIcon name={card.name} hex={card.hex} />
+                </span>
                 <p className="text-sm font-semibold text-gray-800">{card.name}</p>
               </div>
               <span className="text-[11px] text-gray-400">
@@ -766,7 +792,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
                           )
                         )}
                       </div>
-                      <span className={`tabular-nums font-medium shrink-0 ${card.accent ? 'text-[#0D7377]' : 'text-gray-800'}`}>
+                      <span className={`tabular-nums font-medium shrink-0 ${card.accent ? 'text-[#00C896]' : 'text-gray-800'}`}>
                         {fmt(amt)}
                       </span>
                     </div>
@@ -783,8 +809,8 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
 
             {/* Card footer */}
             <div className="mt-auto pt-3 border-t border-gray-100 flex justify-between items-center">
-              <span className="text-xs text-gray-400">Total YTD</span>
-              <span className={`text-sm font-semibold tabular-nums ${card.accent ? 'text-[#0D7377]' : 'text-gray-900'}`}>
+              <span className="text-xs text-gray-400">Total {card.totalLabel || 'YTD'}</span>
+              <span className={`text-sm font-semibold tabular-nums ${card.accent ? 'text-[#00C896]' : 'text-gray-900'}`}>
                 {card.total > 0 ? fmt(card.total) : '—'}
               </span>
             </div>
@@ -846,37 +872,38 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
   const filtered     = freqFilter === 'all' ? fixedCosts : fixedCosts.filter(c => (c.frequency ?? 'monthly') === freqFilter)
   const monthlyTotal = fixedCosts.reduce((s, c) => s + monthlyRate(c), 0)
 
-  const addInput  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
+  const addInput  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#00C896] transition-colors w-full'
   const addSelect = addInput + ' bg-white'
 
   return (
-    <div className="max-w-2xl">
+    <div className="flex flex-col md:flex-row gap-5 items-start">
+    <div className="flex-1 min-w-0 space-y-5">
 
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
+      <div className="budgli-card rounded-xl p-6">
         <h2 className="text-sm font-semibold text-gray-800 mb-5">Add Fixed Cost</h2>
-        <div className="flex gap-3 items-end flex-wrap">
-          <div className="flex-1 min-w-40">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3 sm:items-end">
+          <div className="col-span-2 sm:flex-1 sm:min-w-40">
             <label className="block text-xs text-gray-500 mb-1.5">Name</label>
             <input ref={nameInputRef} type="text" value={name} onChange={e => setName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. Rent" className={addInput} />
           </div>
-          <div className="w-36">
+          <div className="sm:w-36">
             <label className="block text-xs text-gray-500 mb-1.5">Frequency</label>
             <select value={frequency} onChange={e => setFrequency(e.target.value)} className={addSelect}>
               <option value="monthly">Monthly</option>
               <option value="annual">Annual</option>
             </select>
           </div>
-          <div className="w-36">
+          <div className="sm:w-36">
             <label className="block text-xs text-gray-500 mb-1.5">Amount ({frequency === 'annual' ? 'per year' : 'per month'})</label>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#00C896] transition-colors">
               <span className="px-2.5 py-2 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
               <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="0"
                 className="flex-1 px-2.5 py-2 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
           </div>
-          <div className="w-48">
+          <div className="col-span-2 sm:w-48">
             <label className="block text-xs text-gray-500 mb-1.5">Category</label>
             {category === '__custom__' ? (
               <input autoFocus type="text" value={customCatInput} onChange={e => setCustomCatInput(e.target.value)}
@@ -892,7 +919,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
             )}
           </div>
           <button onClick={handleAdd} disabled={!name.trim() || !amount || !addCat}
-            className="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            className="col-span-2 sm:col-auto w-full sm:w-auto px-4 py-2 bg-[#1A1F2E] hover:bg-[#2d3748] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
         </div>
@@ -907,13 +934,13 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
           onAction={() => nameInputRef.current?.focus()}
         />
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="budgli-card rounded-xl overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center gap-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide shrink-0">Fixed Costs</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] shrink-0" style={{ color: '#8896B0' }}>Fixed Costs</p>
             <div className="flex items-center gap-1">
               {['all', 'monthly', 'annual'].map(f => (
                 <button key={f} onClick={() => setFreqFilter(f)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${freqFilter === f ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${freqFilter === f ? 'bg-[#1A1F2E] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'}`}>
                   {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
@@ -921,13 +948,14 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
             <p className="text-xs text-gray-400 shrink-0">{filtered.length} item{filtered.length !== 1 ? 's' : ''}</p>
           </div>
 
+          <div>
           {filtered.map(cost => {
             const isAnnual = (cost.frequency ?? 'monthly') === 'annual'
             const localAmt = getLocal(cost.id, 'amount', fmtAmt(cost.amount))
             const localCat = getLocal(cost.id, 'category', cost.category)
             const hex = CATEGORY_COLOR[localCat] || '#9CA3AF'
             return (
-              <div key={cost.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0">
+              <div key={cost.id} className="flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-3 px-4 py-3 border-b border-gray-50 last:border-0">
 
                 <input
                   type="text"
@@ -935,7 +963,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
                   onChange={e => setLocal(cost.id, 'name', e.target.value)}
                   onBlur={() => commitText(cost, 'name')}
                   onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                  className="flex-1 text-sm text-gray-700 bg-transparent border border-transparent rounded-lg px-2 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all min-w-0"
+                  className="w-full sm:flex-1 text-sm text-gray-700 bg-transparent border border-transparent rounded-lg px-2 py-1 outline-none hover:border-gray-200 focus:border-[#00C896] focus:bg-white transition-all min-w-0"
                 />
 
                 <select
@@ -947,7 +975,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
                   <option value="annual">Annual</option>
                 </select>
 
-                <div className="flex items-center gap-1 shrink-0 w-28 justify-end">
+                <div className="flex items-center gap-1 shrink-0 w-24 sm:w-28 justify-end">
                   <span className="text-xs text-gray-400">$</span>
                   <input
                     type="text"
@@ -955,7 +983,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
                     onChange={e => setLocal(cost.id, 'amount', e.target.value)}
                     onBlur={() => commitText(cost, 'amount')}
                     onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                    className="w-20 text-sm font-semibold text-gray-800 tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all"
+                    className="w-20 text-sm font-semibold text-gray-800 tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#00C896] focus:bg-white transition-all"
                   />
                   {isAnnual && <span className="text-[10px] text-gray-400">/yr</span>}
                 </div>
@@ -971,7 +999,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
                       else setLocal(cost.id, 'category', cost.category)
                     }}
                     onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                    className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#0D7377] bg-white text-gray-700 w-32 shrink-0"
+                    className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#00C896] bg-white text-gray-700 w-32 shrink-0"
                     placeholder="Category…"
                   />
                 ) : isCustomCat(localCat) ? (
@@ -986,7 +1014,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
                         setEditingCustomCatId(null)
                       }}
                       onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                      className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#0D7377] bg-white text-gray-700 w-32 shrink-0"
+                      className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#00C896] bg-white text-gray-700 w-32 shrink-0"
                       placeholder="Category…"
                     />
                   ) : (() => {
@@ -1025,6 +1053,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
               </div>
             )
           })}
+          </div>
 
           <div className="px-5 py-3 bg-gray-50/60 flex justify-between items-center">
             <span className="text-xs font-medium text-gray-500">Monthly total · <span className="text-gray-400">{selectedYear} projection: {fmt(monthlyTotal * 12)}</span></span>
@@ -1032,6 +1061,38 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
           </div>
         </div>
       )}
+
+    </div>
+
+      {/* Fixed Costs info card */}
+      <div className="w-full md:w-64 md:shrink-0">
+        <div className="budgli-card rounded-xl p-6">
+          <h3 className="text-sm font-semibold text-gray-800 mb-1">What to enter here</h3>
+          <p className="text-xs text-gray-500 leading-relaxed mb-4">
+            Fixed costs are recurring expenses that remain relatively constant month to month — committed costs that exist regardless of your daily spending habits.
+          </p>
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Examples</p>
+          <ul className="space-y-1.5 mb-4">
+            {[
+              'Rent or mortgage payments',
+              'Loan and debt repayments',
+              'Insurance premiums',
+              'Subscriptions and memberships',
+              'Utilities with fixed billing',
+            ].map(item => (
+              <li key={item} className="flex items-start gap-2 text-xs text-gray-600">
+                <span className="w-1 h-1 rounded-full bg-gray-300 shrink-0 mt-1.5" />
+                {item}
+              </li>
+            ))}
+          </ul>
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Only enter costs not already captured in your imported transaction data to avoid double-counting.
+            </p>
+          </div>
+        </div>
+      </div>
 
     </div>
   )
@@ -1086,37 +1147,38 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
     onUpdate(entry.id, { name: entry.name, amount: entry.amount, category: entry.category, frequency: entry.frequency ?? 'monthly', [field]: val })
   }
 
-  const addInput  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors w-full'
+  const addInput  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#00C896] transition-colors w-full'
   const addSelect = addInput + ' bg-white'
 
   return (
-    <div className="max-w-2xl">
+    <div className="flex flex-col md:flex-row gap-5 items-start">
+    <div className="flex-1 min-w-0 space-y-5">
 
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
+      <div className="budgli-card rounded-xl p-6">
         <h2 className="text-sm font-semibold text-gray-800 mb-5">Add Savings Allocation</h2>
-        <div className="flex gap-3 items-end flex-wrap">
-          <div className="flex-1 min-w-40">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3 sm:items-end">
+          <div className="col-span-2 sm:flex-1 sm:min-w-40">
             <label className="block text-xs text-gray-500 mb-1.5">Name</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. RRSP contribution" className={addInput} />
           </div>
-          <div className="w-36">
+          <div className="sm:w-36">
             <label className="block text-xs text-gray-500 mb-1.5">Frequency</label>
             <select value={frequency} onChange={e => setFrequency(e.target.value)} className={addSelect}>
               <option value="monthly">Monthly</option>
               <option value="annual">Annual</option>
             </select>
           </div>
-          <div className="w-36">
+          <div className="sm:w-36">
             <label className="block text-xs text-gray-500 mb-1.5">Amount ({frequency === 'annual' ? 'per year' : 'per month'})</label>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#00C896] transition-colors">
               <span className="px-2.5 py-2 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
               <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="0"
                 className="flex-1 px-2.5 py-2 text-sm text-gray-800 outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
           </div>
-          <div className="w-48">
+          <div className="col-span-2 sm:w-48">
             <label className="block text-xs text-gray-500 mb-1.5">Type</label>
             {category === '__custom__' ? (
               <input autoFocus type="text" value={customCatInput} onChange={e => setCustomCatInput(e.target.value)}
@@ -1130,25 +1192,26 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
             )}
           </div>
           <button onClick={handleAdd} disabled={!name.trim() || !amount || !addCat}
-            className="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            className="col-span-2 sm:col-auto w-full sm:w-auto px-4 py-2 bg-[#1A1F2E] hover:bg-[#2d3748] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
         </div>
+        <p className="text-xs text-gray-400 mt-4">These numbers stay in your account. Budgli does not connect to your bank.</p>
       </div>
 
       {savingsEntries.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+        <div className="budgli-card rounded-xl p-8 text-center">
           <p className="text-sm text-gray-400">No savings allocations yet — add your first above</p>
           <p className="text-xs text-gray-300 mt-1">Track where your savings go each month (RRSP, TFSA, investments, etc.)</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="budgli-card rounded-xl overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center gap-3">
-            <p className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide shrink-0">Savings Allocations</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] shrink-0" style={{ color: '#8896B0' }}>Savings Allocations</p>
             <div className="flex items-center gap-1">
               {['all', 'monthly', 'annual'].map(f => (
                 <button key={f} onClick={() => setFreqFilter(f)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${freqFilter === f ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${freqFilter === f ? 'bg-[#1A1F2E] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'}`}>
                   {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
@@ -1156,13 +1219,14 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
             <p className="text-xs text-gray-400 shrink-0">{filtered.length} item{filtered.length !== 1 ? 's' : ''}</p>
           </div>
 
+          <div>
           {filtered.map(entry => {
             const isAnnual = (entry.frequency ?? 'monthly') === 'annual'
             const localAmt = getLocal(entry.id, 'amount', fmtAmt(entry.amount))
             const localCat = getLocal(entry.id, 'category', entry.category)
-            const hex = CATEGORY_COLOR[localCat] || '#14A085'
+            const hex = CATEGORY_COLOR[localCat] || '#00C896'
             return (
-              <div key={entry.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0">
+              <div key={entry.id} className="flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-3 px-4 py-3 border-b border-gray-50 last:border-0">
 
                 <input
                   type="text"
@@ -1170,7 +1234,7 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
                   onChange={e => setLocal(entry.id, 'name', e.target.value)}
                   onBlur={() => commitText(entry, 'name')}
                   onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                  className="flex-1 text-sm text-gray-700 bg-transparent border border-transparent rounded-lg px-2 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all min-w-0"
+                  className="w-full sm:flex-1 text-sm text-gray-700 bg-transparent border border-transparent rounded-lg px-2 py-1 outline-none hover:border-gray-200 focus:border-[#00C896] focus:bg-white transition-all min-w-0"
                 />
 
                 <select
@@ -1182,7 +1246,7 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
                   <option value="annual">Annual</option>
                 </select>
 
-                <div className="flex items-center gap-1 shrink-0 w-28 justify-end">
+                <div className="flex items-center gap-1 shrink-0 w-24 sm:w-28 justify-end">
                   <span className="text-xs text-gray-400">$</span>
                   <input
                     type="text"
@@ -1190,7 +1254,7 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
                     onChange={e => setLocal(entry.id, 'amount', e.target.value)}
                     onBlur={() => commitText(entry, 'amount')}
                     onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                    className="w-20 text-sm font-semibold text-[#0D7377] tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#0D7377] focus:bg-white transition-all"
+                    className="w-20 text-sm font-semibold text-[#00C896] tabular-nums text-right bg-transparent border border-transparent rounded-lg px-1.5 py-1 outline-none hover:border-gray-200 focus:border-[#00C896] focus:bg-white transition-all"
                   />
                   {isAnnual && <span className="text-[10px] text-gray-400">/yr</span>}
                 </div>
@@ -1206,7 +1270,7 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
                       else setLocal(entry.id, 'category', entry.category)
                     }}
                     onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                    className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#0D7377] bg-white text-gray-700 w-32 shrink-0"
+                    className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#00C896] bg-white text-gray-700 w-32 shrink-0"
                     placeholder="Type…"
                   />
                 ) : isCustomCat(localCat) ? (
@@ -1221,7 +1285,7 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
                         setEditingCustomCatId(null)
                       }}
                       onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                      className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#0D7377] bg-white text-gray-700 w-32 shrink-0"
+                      className="text-xs font-medium px-2.5 py-0.5 rounded-full border border-gray-200 outline-none focus:border-[#00C896] bg-white text-gray-700 w-32 shrink-0"
                       placeholder="Type…"
                     />
                   ) : (() => {
@@ -1258,13 +1322,46 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
               </div>
             )
           })}
+          </div>
 
           <div className="px-5 py-3 bg-[#F0FDF9]/60 flex justify-between items-center">
-            <span className="text-xs font-medium text-[#0D7377]">Monthly total · <span className="text-[#0D7377]/50">{selectedYear} projection: {fmt(monthlyTotal * 12)}</span></span>
-            <span className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(monthlyTotal)}</span>
+            <span className="text-xs font-medium text-gray-500">Monthly total · <span className="text-gray-400">{selectedYear} projection: {fmt(monthlyTotal * 12)}</span></span>
+            <span className="text-sm font-semibold text-[#1A1F2E] tabular-nums">{fmt(monthlyTotal)}</span>
           </div>
         </div>
       )}
+
+    </div>
+
+      {/* Savings info card */}
+      <div className="w-full md:w-64 md:shrink-0">
+        <div className="budgli-card rounded-xl p-6">
+          <h3 className="text-sm font-semibold text-gray-800 mb-1">What to enter here</h3>
+          <p className="text-xs text-gray-500 leading-relaxed mb-4">
+            Record the amounts you are actively contributing to savings or investment accounts — money you are intentionally setting aside each month or year.
+          </p>
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Examples</p>
+          <ul className="space-y-1.5 mb-4">
+            {[
+              'RRSP or 401(k) contributions',
+              'TFSA or ISA deposits',
+              'Investment account transfers',
+              'Emergency fund contributions',
+              'Long-term savings goals',
+            ].map(item => (
+              <li key={item} className="flex items-start gap-2 text-xs text-gray-600">
+                <span className="w-1 h-1 rounded-full bg-[#00C896] shrink-0 mt-1.5" />
+                {item}
+              </li>
+            ))}
+          </ul>
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Only enter contributions not already captured in your transaction data to avoid double-counting.
+            </p>
+          </div>
+        </div>
+      </div>
 
     </div>
   )
@@ -1272,51 +1369,48 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
 
 // ─── Monthly performance score ────────────────────────────────────────────────
 
-function calcMonthlyScore({ savingsRate, txnSpent, monthlyNet, fixedMonthlyTotal, totalSpent, untagged, totalDebits }) {
+function calcMonthlyScore({ savingsRate, txnSpent, monthlyNet, fixedMonthlyTotal, totalSpent, untagged, totalDebits, priorMonthlySpends }) {
   if (monthlyNet <= 0) return null
 
-  // Savings Rate: 0–40 pts
-  const srScore = savingsRate === null || savingsRate <= 0 ? 0 : Math.min((savingsRate / 30) * 40, 40)
+  // Savings Rate: 0–50 pts — progressive curve, 50%+ earns full marks
+  const srScore = savingsRate === null || savingsRate <= 0
+    ? 0
+    : Math.min(50, 50 * Math.pow(savingsRate / 50, 0.5))
 
-  // Expense Ratio: 0–20 pts — variable spend vs net income
-  let erScore = 10
-  if (monthlyNet > 0) {
-    const ratio = txnSpent / monthlyNet
-    erScore = ratio >= 0.8 ? 0 : ratio >= 0.7 ? 3 : ratio >= 0.6 ? 8 : ratio >= 0.5 ? 13 : ratio >= 0.4 ? 17 : 20
-  }
-
-  // Cost Balance: 0–30 pts — fixed proportion of total spend (ideal 30–60%)
-  let fvScore = 15
-  if (totalSpent > 0) {
-    const fRatio = fixedMonthlyTotal / totalSpent
-    fvScore = fRatio >= 0.3 && fRatio <= 0.6 ? 30 : fRatio >= 0.2 && fRatio <= 0.7 ? 20 : 10
+  // Spending Consistency: 0–40 pts — deviation from prior monthly average
+  const hasSufficientHistory = Array.isArray(priorMonthlySpends) && priorMonthlySpends.length >= 2
+  let consistencyScore = 0
+  if (hasSufficientHistory) {
+    const avgSpend = priorMonthlySpends.reduce((s, v) => s + v, 0) / priorMonthlySpends.length
+    const deviation = avgSpend > 0 ? (totalSpent - avgSpend) / avgSpend : 0
+    consistencyScore = Math.min(40, Math.max(0, 40 * (1 - Math.abs(deviation) / 0.25)))
   }
 
   // Clarity: 0–10 pts — how many debits are categorised
-  const clarityScore = totalDebits === 0 ? 10 : Math.round(((totalDebits - untagged) / totalDebits) * 10)
+  const clarityScore = totalDebits === 0 ? 10 : Math.max(0, Math.round(((totalDebits - untagged) / totalDebits) * 10))
+
+  const maxScore = hasSufficientHistory ? 100 : 60
 
   return {
-    score: Math.round(srScore + erScore + fvScore + clarityScore),
+    score: Math.round(srScore + consistencyScore + clarityScore),
+    maxScore,
+    scoreNote: hasSufficientHistory
+      ? null
+      : 'Score is out of 60 this month — Spending Consistency requires 2+ months of history',
     components: [
-      { label: 'Savings Rate',  tip: 'How much of your income you kept instead of spending.',       value: Math.round(srScore),      max: 40 },
-      { label: 'Expense Ratio', tip: 'What portion of your income went to expenses.',               value: Math.round(erScore),      max: 20 },
-      { label: 'Cost Balance',  tip: 'How well your fixed and variable costs are balanced.',         value: Math.round(fvScore),      max: 30 },
-      { label: 'Clarity',       tip: 'How many of your transactions have been categorised.',         value: Math.round(clarityScore), max: 10 },
+      { label: 'Savings Rate',         tip: 'How much of your income you kept. Higher savings rates score progressively better — 50% or more earns full marks.',                                         value: Math.round(srScore),           max: 50 },
+      { label: 'Spending Consistency', tip: hasSufficientHistory ? 'How consistent your spending is compared to your recent monthly average — steady habits score well.' : 'N/A — not enough history yet. Spending Consistency requires 2+ months of prior data.', value: Math.round(consistencyScore), max: 40 },
+      { label: 'Clarity',              tip: 'How many of your transactions have been categorised.',                                                                                                        value: Math.round(clarityScore),      max: 10 },
     ],
   }
 }
 
-function getMonthlyInsight(score, { savingsRate }) {
-  if (score >= 85) return { headline: 'Excellent month', sub: 'Strong savings rate and well-balanced costs — keep it up' }
-  if (score >= 70) return { headline: 'Solid performance', sub: 'Good margin this month — look for small cuts to push higher' }
-  if (score >= 55) {
-    if (savingsRate !== null && savingsRate < 10)
-      return { headline: 'Spending is tight this month', sub: 'Low savings rate — review variable spending for quick wins' }
-    return { headline: 'Room to improve', sub: 'Decent month overall — categorise transactions for a fuller picture' }
-  }
-  if (score >= 40) return { headline: 'Breaking even', sub: 'Costs are close to income — trim discretionary spending to build a buffer' }
-  if (score >= 20) return { headline: 'Costs outpacing income', sub: 'High expense ratio this month — review fixed and variable costs' }
-  return { headline: 'Month needs attention', sub: 'Add salary info and categorise transactions to get your score' }
+function getMonthlyInsight(score) {
+  if (score >= 90) return { headline: 'Outstanding', sub: 'Exceptional savings discipline and consistent habits' }
+  if (score >= 75) return { headline: 'Excellent', sub: 'Strong savings rate and stable spending' }
+  if (score >= 60) return { headline: 'Good', sub: 'Solid foundation — push your savings rate higher to level up' }
+  if (score >= 40) return { headline: 'Fair', sub: 'Making progress — focus on saving more and spending consistently' }
+  return { headline: 'Needs work', sub: 'Start by building a regular savings habit' }
 }
 
 // ─── AnalysisSection (Insights + SpendingLeaks unified) ───────────────────────
@@ -1449,41 +1543,38 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
   if (insights.length === 0 && leaks.length === 0 && txnSpent === 0) return null
 
   return (
-    <div
-      className="mt-6 rounded-2xl border border-white/[0.07] overflow-hidden"
-      style={{ background: 'linear-gradient(160deg, #0F3460 0%, #1A1A2E 45%, #0D2137 100%)' }}
-    >
+    <div className="mt-5 bg-white rounded-2xl border border-gray-100 overflow-hidden" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
 
       {/* Section header */}
-      <div className="flex items-center gap-2.5 px-6 pt-5 pb-4 border-b border-white/[0.06]">
-        <BarChart3 className="w-4 h-4 text-white/30" />
-        <span className="text-[11px] font-bold text-white/30 uppercase tracking-[0.2em]">Monthly Analysis</span>
+      <div className="flex items-center gap-2.5 px-6 pt-4 pb-3.5 border-b border-gray-100">
+        <BarChart3 className="w-4 h-4 text-gray-300" />
+        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.15em]">Monthly Analysis</span>
       </div>
 
-      <div className="flex min-h-[180px]">
+      <div className="flex flex-col md:flex-row md:min-h-[180px]">
 
         {/* LEFT — Insights */}
-        <div className="flex-1 p-6 pr-5">
+        <div className="flex-1 p-5 md:p-6 md:pr-5">
           <div className="flex items-center gap-1.5 mb-4">
-            <Lightbulb className="w-3 h-3 text-teal-400/70" />
-            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Insights</span>
+            <Lightbulb className="w-3 h-3" style={{ color: '#00C896' }} />
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Insights</span>
           </div>
 
           {insights.length === 0 ? (
-            <p className="text-xs text-white/25 italic">Add salary details to generate insights.</p>
+            <p className="text-xs text-gray-300 italic">Add salary details to generate insights.</p>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {insights.map((ins, i) => (
                 <div
                   key={i}
-                  className="rounded-xl px-4 py-3.5"
-                  style={{ background: 'rgba(255,255,255,0.04)', borderLeft: '2px solid #0D7377' }}
+                  className="rounded-xl px-4 py-3.5 bg-gray-50"
+                  style={{ borderLeft: '2px solid #00C896' }}
                 >
-                  <div className="flex items-center gap-1.5 mb-2 text-teal-400">
+                  <div className="flex items-center gap-1.5 mb-2" style={{ color: '#00C896' }}>
                     {ins.icon}
                     <span className="text-[10px] font-bold uppercase tracking-wider">{ins.label}</span>
                   </div>
-                  <p className="text-xs text-white/55 leading-relaxed">{ins.body}</p>
+                  <p className="text-xs text-gray-500 leading-relaxed">{ins.body}</p>
                 </div>
               ))}
             </div>
@@ -1491,37 +1582,38 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
         </div>
 
         {/* Divider */}
-        <div className="w-px bg-white/[0.06] my-5 shrink-0" />
+        <div className="hidden md:block w-px bg-gray-100 my-5 shrink-0" />
+        <div className="md:hidden h-px bg-gray-100 mx-5" />
 
         {/* RIGHT — Spending Spikes */}
-        <div className="w-72 shrink-0 p-6 pl-5">
+        <div className="md:w-72 shrink-0 p-5 md:p-6 md:pl-5">
           <div className="flex items-center gap-1.5 mb-4">
-            <AlertTriangle className="w-3 h-3 text-amber-400/70" />
-            <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Spending Spikes</span>
+            <AlertTriangle className="w-3 h-3 text-amber-400" />
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Spending Spikes</span>
             {hasPrior && (
-              <span className="text-[10px] text-white/20 ml-0.5">vs {priorMonthName}</span>
+              <span className="text-[10px] text-gray-300 ml-0.5">vs {priorMonthName}</span>
             )}
           </div>
 
           {leaks.length === 0 ? (
             <div className="flex items-center gap-2 mt-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-teal-400/60 shrink-0" />
-              <span className="text-xs text-white/35">No spending spikes this month.</span>
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: '#00C896' }} />
+              <span className="text-xs text-gray-400">No spending spikes this month.</span>
             </div>
           ) : (
             <div className="space-y-4">
               {leaks.slice(0, 2).map((l, i) => (
                 <div key={i} className="flex items-start gap-2.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70 shrink-0 mt-1.5" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline justify-between gap-2 mb-0.5">
-                      <span className="text-sm font-semibold text-white/75 truncate">{l.cat}</span>
+                      <span className="text-sm font-semibold text-gray-700 truncate">{l.cat}</span>
                       <span className="shrink-0 text-[11px] font-bold px-1.5 py-0.5 rounded-md tabular-nums"
-                        style={{ backgroundColor: 'rgba(251,191,36,0.12)', color: '#FCD34D' }}>
+                        style={{ backgroundColor: 'rgba(251,191,36,0.12)', color: '#D97706' }}>
                         {l.chip}
                       </span>
                     </div>
-                    <p className="text-[11px] text-white/35 leading-snug">{l.body}</p>
+                    <p className="text-[11px] text-gray-400 leading-snug">{l.body}</p>
                   </div>
                 </div>
               ))}
@@ -1536,13 +1628,14 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
 
 // ─── MonthlyDashboard ─────────────────────────────────────────────────────────
 
-function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, salary, fixedCosts, savingsEntries, variableOpen, setVariableOpen, fixedOpen, setFixedOpen, savingsOpen, setSavingsOpen }) {
+function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, salary, fixedCosts, savingsEntries, variableOpen, setVariableOpen, fixedOpen, setFixedOpen, savingsOpen, setSavingsOpen, userGoals }) {
 
-  const monthTxns = txns.filter(t => yearMonthOf(t.date) === selectedYear + '-' + selectedMonth)
+  const monthTxns  = txns.filter(t => yearMonthOf(t.date) === selectedYear + '-' + selectedMonth)
+  const customCats = [...new Set(txns.map(t => t.category).filter(c => c && !CATS_SET.has(c)))].sort()
   const allDebits   = monthTxns.filter(t => t.type === 'debit' && !EXCLUDE_FROM_TOTALS.has(t.category))
   const debits      = allDebits.filter(t => !isSaving(t.category))
   const savingsTxns = allDebits.filter(t => isSaving(t.category))
-  const untagged    = monthTxns.filter(t => !t.category).length
+  const untagged    = allDebits.filter(t => !t.category).length
 
   const txnSpent          = debits.reduce((sum, t) => sum + t.amount, 0)
   const fixedMonthlyTotal = fixedCosts.reduce((s, c) => s + monthlyRate(c), 0)
@@ -1568,74 +1661,204 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
   const monthLabel = MONTHS.find(m => m.id === selectedMonth)?.label || ''
 
   const totalDebits  = debits.length + savingsTxns.length
-  const monthlyScore = calcMonthlyScore({ savingsRate, txnSpent, monthlyNet, fixedMonthlyTotal, totalSpent, untagged, totalDebits })
+
+  // Prior months' total spending for Spending Consistency metric
+  const priorMonthlySpends = (() => {
+    const currentYM = selectedYear + '-' + selectedMonth
+    const ymSpend = {}
+    for (const t of txns) {
+      const ym = yearMonthOf(t.date)
+      if (!ym || ym === currentYM) continue
+      if (t.type !== 'debit' || EXCLUDE_FROM_TOTALS.has(t.category) || isSaving(t.category)) continue
+      ymSpend[ym] = (ymSpend[ym] || 0) + t.amount
+    }
+    return Object.values(ymSpend).map(v => v + fixedMonthlyTotal)
+  })()
+
+  const monthlyScore = calcMonthlyScore({ savingsRate, txnSpent, monthlyNet, fixedMonthlyTotal, totalSpent, untagged, totalDebits, priorMonthlySpends })
   const scoreColor   = monthlyScore === null ? '#6B7280'
-    : monthlyScore.score >= 85 ? '#14A085'
-    : monthlyScore.score >= 70 ? '#0D7377'
+    : monthlyScore.score >= 85 ? '#00C896'
+    : monthlyScore.score >= 70 ? '#0D9488'
     : monthlyScore.score >= 55 ? '#3B82F6'
     : monthlyScore.score >= 40 ? '#F59E0B'
     : monthlyScore.score >= 20 ? '#F97316'
     : '#EF4444'
-  const scoreGrade = monthlyScore === null ? null
-    : monthlyScore.score >= 85 ? 'A+' : monthlyScore.score >= 70 ? 'A' : monthlyScore.score >= 55 ? 'B'
-    : monthlyScore.score >= 40 ? 'C' : monthlyScore.score >= 20 ? 'D' : 'F'
-  const monthlyInsight = monthlyScore !== null ? getMonthlyInsight(monthlyScore.score, { savingsRate }) : null
+  const [scoreExpanded, setScoreExpanded] = useState(false)
+  const [expandedVarCat, setExpandedVarCat] = useState(null)
+  const monthlyInsight = monthlyScore !== null ? getMonthlyInsight(monthlyScore.score) : null
+
+  // Personalised goal insight
+  const goalInsight = (() => {
+    const goal = userGoals?.primary_goal
+    if (!goal || monthlyNet <= 0) return null
+    const suggestedVariable = monthlyNet * 0.3
+    if (goal === 'Save more money' || goal === 'Build an emergency fund') {
+      if (savingsRate !== null && savingsRate < 15)
+        return `Based on your goal to ${goal.toLowerCase()}, one opportunity could be reducing variable spending — your savings rate this month is ${savingsRate.toFixed(1)}%, below the suggested 20%.`
+      if (savingsRate !== null && savingsRate >= 20)
+        return `You're on track with your goal to ${goal.toLowerCase()} — your savings rate of ${savingsRate.toFixed(1)}% is solid.`
+      return `Based on your goal to ${goal.toLowerCase()}, a helpful starting point may be reviewing your variable and fixed costs each month.`
+    }
+    if (goal === 'Reduce unnecessary spending') {
+      if (txnSpent > suggestedVariable * 1.1)
+        return `Your variable spending this month may be above a healthy range. One opportunity could be reviewing dining, subscriptions, or shopping.`
+      return `Based on your goal to reduce unnecessary spending, you're within a reasonable range this month — keep tracking categories to spot patterns.`
+    }
+    if (goal === 'Improve monthly cash flow') {
+      const breathing = monthlyNet - totalSpent
+      if (breathing > 0) return `You have ${fmt(breathing)} of breathing room this month. Based on your goal, consider directing part of this toward savings.`
+      return `Based on your goal to improve cash flow, your costs are close to your income this month. A helpful starting point may be reviewing recurring fixed expenses.`
+    }
+    if (goal === 'Understand where my money goes')
+      return `Keep categorising your transactions — the more you tag, the clearer your monthly spending picture becomes.`
+    if (goal === 'Pay down debt')
+      return `Based on your goal to pay down debt, consider directing any monthly surplus toward your highest-interest balance first.`
+    if (goal === 'Prepare for a big purchase') {
+      if (totalSavings > 0) return `Based on your goal, you're building toward your purchase — ${fmt(totalSavings)} set aside this month.`
+      return `Based on your goal to prepare for a big purchase, tracking and growing your monthly savings is the first step.`
+    }
+    return null
+  })()
+
+  // Prior month savings rate for summary banner
+  const mIdx        = parseInt(selectedMonth, 10)
+  const priorMIdx   = mIdx === 1 ? 12 : mIdx - 1
+  const priorYearB  = mIdx === 1 ? String(parseInt(selectedYear, 10) - 1) : selectedYear
+  const priorMStrB  = priorMIdx.toString().padStart(2, '0')
+  const priorMonthNameB = MONTHS.find(m => m.id === priorMStrB)?.label || ''
+  const priorDebitsB  = txns.filter(t =>
+    yearMonthOf(t.date) === `${priorYearB}-${priorMStrB}` &&
+    t.type === 'debit' &&
+    !EXCLUDE_FROM_TOTALS.has(t.category) &&
+    !isSaving(t.category)
+  )
+  const priorTxnSpentB  = priorDebitsB.reduce((s, t) => s + t.amount, 0)
+  const priorSavingsB   = Math.max(0, monthlyNet - priorTxnSpentB - fixedMonthlyTotal) + savingsEntriesTotal
+  const priorSavingsRateB = monthlyNet > 0 && priorDebitsB.length > 0
+    ? (priorSavingsB / monthlyNet) * 100
+    : null
+
+  // Top variable spending category for summary banner
+  const bannerVarByCat = {}
+  for (const t of debits) {
+    const cat = t.category || 'Uncategorized'
+    bannerVarByCat[cat] = (bannerVarByCat[cat] || 0) + t.amount
+  }
+  const bannerTopCat = Object.entries(bannerVarByCat).sort((a, b) => b[1] - a[1])[0]
 
   return (
     <div>
 
-      {/* Performance Grade card — full width */}
+      {/* Summary banner */}
+      {monthlyNet > 0 && (savingsRate !== null || bannerTopCat) && (
+        <div className="flex flex-col sm:flex-row gap-2 mb-5">
+          {savingsRate !== null && (
+            <div className="flex-1 bg-white rounded-xl px-4 py-3 border border-gray-100" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.12em] mb-1">Savings Rate</p>
+              <p className="text-sm font-semibold text-gray-900">Saved {savingsRate.toFixed(1)}% this month</p>
+            </div>
+          )}
+          {priorSavingsRateB !== null && savingsRate !== null && (
+            <div className="flex-1 bg-white rounded-xl px-4 py-3 border border-gray-100" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.12em] mb-1">vs {priorMonthNameB}</p>
+              <p className={`text-sm font-semibold ${savingsRate >= priorSavingsRateB ? 'text-[#00C896]' : 'text-[#E05252]'}`}>
+                {savingsRate >= priorSavingsRateB ? '↑ Up' : '↓ Down'} from {priorSavingsRateB.toFixed(1)}% in {priorMonthNameB}
+              </p>
+            </div>
+          )}
+          {bannerTopCat && (
+            <div className="flex-1 bg-white rounded-xl px-4 py-3 border border-gray-100" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.12em] mb-1">Top Spend</p>
+              <p className="text-sm font-semibold text-gray-900">Top spend: {bannerTopCat[0]} · {fmt(bannerTopCat[1])}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Personalised goal insight */}
+      {goalInsight && (
+        <div className="mb-5 px-5 py-3.5 rounded-xl border border-[#0D7377]/20 bg-[#0D7377]/5 flex items-start gap-3">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#0D7377] shrink-0 mt-[7px]" />
+          <div>
+            <p className="text-[11px] font-semibold text-[#0D7377] uppercase tracking-[0.12em] mb-0.5">For you · {userGoals.primary_goal}</p>
+            <p className="text-xs text-gray-600 leading-relaxed">{goalInsight}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Financial Health Score card */}
         {monthlyScore !== null ? (
-          <div className="rounded-2xl p-6 mb-5 border border-white/10 overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #0F3460 0%, #1A1A2E 50%, #0D2137 100%)' }}>
-            <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at 15% 50%, ${scoreColor}18 0%, transparent 60%)` }} />
-            <div className="relative flex items-center gap-8">
-              <div className="shrink-0 w-56">
-                <div className="flex items-center gap-1 mb-4">
-                  <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em]">Monthly Score</p>
+          <div className="bg-white rounded-2xl p-5 mb-5 border border-gray-100 overflow-hidden budgli-card-pop" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+            {/* Score header */}
+            <div className="flex items-center gap-4 mb-5">
+              <div className="flex items-end gap-1 shrink-0">
+                <span className="text-[72px] font-black leading-none tabular-nums" style={{ color: scoreColor }}>
+                  {monthlyScore.score}
+                </span>
+                <span className="text-sm font-semibold text-gray-300 leading-none mb-2.5">/{monthlyScore.maxScore ?? 100}</span>
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1 mb-1">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em]">Monthly Score</p>
                   <HelpTip text="A score based on your savings, spending, and consistency." />
                 </div>
-                <div className="flex items-end gap-2 mb-3">
-                  <span className="text-[72px] font-black leading-none tabular-nums" style={{ color: scoreColor }}>
-                    {monthlyScore.score}
-                  </span>
-                  <div className="flex flex-col gap-1 mb-2">
-                    <span className="text-sm font-semibold text-white/25 leading-none">/100</span>
-                    <span className="px-2 py-0.5 rounded-md text-xs font-black leading-none" style={{ backgroundColor: scoreColor + '28', color: scoreColor }}>
-                      {scoreGrade}
+                <p className="text-sm font-semibold text-gray-800 leading-snug">{monthlyInsight.headline}</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-snug">{monthlyInsight.sub}</p>
+              </div>
+            </div>
+            {/* Contributors */}
+            <div className="space-y-3">
+              {monthlyScore.components.map(c => {
+                const pct = Math.max(0, Math.min(100, (c.value / c.max) * 100))
+                return (
+                  <div key={c.label} className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-gray-500 w-24 shrink-0">{c.label}</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-gray-100">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: scoreColor }} />
+                    </div>
+                    <span className="text-xs font-bold tabular-nums w-12 text-right shrink-0" style={{ color: scoreColor }}>
+                      {c.value}<span className="text-gray-300 font-normal">/{c.max}</span>
                     </span>
                   </div>
-                </div>
-                <p className="text-sm font-semibold text-white leading-snug">{monthlyInsight.headline}</p>
-                <p className="text-xs text-white/40 mt-1 leading-snug">{monthlyInsight.sub}</p>
-              </div>
-              <div className="w-px bg-white/10 self-stretch" />
-              <div className="flex-1 grid grid-cols-2 gap-x-10 gap-y-5">
-                {monthlyScore.components.map(c => {
-                  const pct = (c.value / c.max) * 100
-                  return (
-                    <div key={c.label}>
-                      <div className="flex justify-between items-baseline mb-2">
-                        <span className="text-[11px] font-medium text-white/45 flex items-center">{c.label}{c.tip && <HelpTip text={c.tip} />}</span>
-                        <span className="text-xs font-bold tabular-nums" style={{ color: scoreColor }}>
-                          {c.value}<span className="text-white/20 font-normal">/{c.max}</span>
+                )
+              })}
+            </div>
+            {/* How is this calculated? */}
+            <div className="mt-5 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => setScoreExpanded(v => !v)}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                How is this calculated?
+                <svg
+                  className={`w-3 h-3 transition-transform duration-200 ${scoreExpanded ? 'rotate-180' : ''}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                ><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              <div className={`grid transition-all duration-300 ease-in-out ${scoreExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                <div className="overflow-hidden">
+                  <div className="pt-3 space-y-2.5">
+                    {monthlyScore.components.map(c => (
+                      <div key={c.label} className="flex gap-3 text-xs">
+                        <span className="w-28 shrink-0 font-medium text-gray-700">
+                          {c.label} <span className="font-normal text-gray-400">{c.value}/{c.max}</span>
                         </span>
+                        <span className="text-gray-500 leading-relaxed">{c.tip}</span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-white/[0.08]">
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: scoreColor, opacity: 0.85 }} />
-                      </div>
-                    </div>
-                  )
-                })}
+                    ))}
+                    <p className="text-xs text-gray-400 pt-0.5">{monthlyScore.scoreNote ?? 'Your score updates each month based on your latest data.'}</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl p-6 mb-5 border border-white/10 flex items-center gap-4" style={{ background: 'linear-gradient(135deg, #0F3460 0%, #1A1A2E 100%)' }}>
+          <div className="bg-white rounded-2xl p-6 mb-5 border border-gray-100 flex items-center gap-4 budgli-card-pop" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
             <div>
-              <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em] mb-2">Monthly Score</p>
-              <p className="text-2xl font-black text-white/20">—</p>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em] mb-2">Monthly Score</p>
+              <p className="text-2xl font-black text-gray-200">—</p>
             </div>
-            <p className="text-xs text-white/30 ml-2">Add salary details to generate your score</p>
+            <p className="text-xs text-gray-400 ml-2">Add salary details to generate your score</p>
           </div>
         )}
 
@@ -1656,12 +1879,12 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
         }))
 
         const savingsRows = savingsEntries.map(e => ({
-          name: e.name, amount: monthlyRate(e), hex: CATEGORY_COLOR[e.category] || '#14A085',
+          name: e.name, amount: monthlyRate(e), hex: CATEGORY_COLOR[e.category] || '#00C896',
         }))
 
         // Shared row renderer — identical format for all three sections
         const Row = ({ name, amount, hex }) => (
-          <div className="flex items-center gap-2.5 py-1.5">
+          <div className="flex items-center gap-2.5 py-1.5 -mx-5 px-5 rounded transition-colors hover:bg-gray-50">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: hex }} />
             <span className="flex-1 text-sm text-gray-600 truncate">{name}</span>
             <span className="text-sm font-medium text-gray-700 tabular-nums">{fmt(amount)}</span>
@@ -1669,7 +1892,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
         )
 
         return (
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
+          <div className="budgli-card rounded-xl overflow-hidden mb-4">
 
             {/* Header */}
             <div className="px-5 py-3 border-b border-gray-100 flex items-baseline justify-between">
@@ -1678,44 +1901,127 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
             </div>
 
             {/* NET INCOME */}
-            <div className="px-5 py-3">
-              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Net Income</p>
-              <div className="flex justify-between items-center py-1.5">
-                <div className="flex items-center gap-1">
-                  <span className="text-sm text-gray-700">Net Take-Home Pay</span>
-                  <HelpTip text="Your take-home pay after tax and deductions." />
+            <div>
+              <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Net Income</p>
+              </div>
+              <div className="px-5">
+                <div className="flex justify-between items-center py-2">
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm text-gray-700">Net Take-Home Pay</span>
+                    <HelpTip text="Your take-home pay after tax and deductions." />
+                  </div>
+                  <span className={`text-sm font-semibold tabular-nums ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                    {monthlyNet > 0 ? fmt(monthlyNet) : salary.gross === 0 ? 'Add salary →' : '—'}
+                  </span>
                 </div>
-                <span className={`text-sm font-semibold tabular-nums ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                  {monthlyNet > 0 ? fmt(monthlyNet) : salary.gross === 0 ? 'Add salary →' : '—'}
-                </span>
               </div>
             </div>
 
             {/* FIXED COSTS */}
-            <div className="px-5 py-3 border-t border-gray-100">
-              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Fixed Costs</p>
-              {fixedRows.length > 0
-                ? fixedRows.map((r, i) => <Row key={i} {...r} />)
-                : <p className="text-xs text-gray-300 py-1.5">No fixed costs set up</p>
-              }
+            <div className="border-t border-gray-100">
+              <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Fixed Costs</p>
+              </div>
+              <div className="px-5">
+                {fixedRows.length > 0
+                  ? fixedRows.map((r, i) => <Row key={i} {...r} />)
+                  : <p className="text-xs text-gray-300 py-2">No fixed costs set up</p>
+                }
+                {fixedRows.length > 0 && (
+                  <div className="flex justify-between items-center py-2 border-t border-gray-100 mt-0.5">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Fixed</span>
+                    <span className="text-sm font-semibold text-gray-700 tabular-nums">{fmt(fixedRows.reduce((s, r) => s + r.amount, 0))}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* VARIABLE COSTS */}
-            <div className="px-5 py-3 border-t border-gray-100">
-              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Variable Costs</p>
-              {varRows.length > 0
-                ? varRows.map((r, i) => <Row key={i} {...r} />)
-                : <p className="text-xs text-gray-300 py-1.5">No variable spending this month</p>
-              }
+            {/* VARIABLE COSTS — each row expands to show its transactions */}
+            <div className="border-t border-gray-100">
+              <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Variable Costs</p>
+              </div>
+              {varRows.length === 0 ? (
+                <div className="px-5"><p className="text-xs text-gray-300 py-2">No variable spending this month</p></div>
+              ) : varRows.map(r => {
+                const catTxns = debits.filter(t => (t.category || 'Uncategorized') === r.name)
+                const isExpanded = expandedVarCat === r.name
+                return (
+                  <div key={r.name}>
+                    <button
+                      onClick={() => setExpandedVarCat(isExpanded ? null : r.name)}
+                      className="w-full flex items-center gap-2.5 py-2 px-5 hover:bg-gray-50 transition-colors text-left"
+                    >
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: r.hex }} />
+                      <span className="flex-1 text-sm text-gray-600 truncate">{r.name}</span>
+                      <span className="text-[11px] text-gray-400 shrink-0 mr-1">{catTxns.length}</span>
+                      <span className="text-sm font-medium text-gray-700 tabular-nums">{fmt(r.amount)}</span>
+                      <svg className={`w-3 h-3 text-gray-400 transition-transform shrink-0 ml-1.5 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 border-b border-b-gray-100">
+                        {/* Mobile */}
+                        <div className="md:hidden divide-y divide-gray-50">
+                          {catTxns.map(t => (
+                            <div key={t.id} className="px-5 py-2.5 bg-gray-50/40">
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <span className="text-xs text-gray-700 truncate">{titleCaseDesc(t.description)}</span>
+                                <span className="text-sm font-semibold tabular-nums shrink-0 text-gray-800">{fmt(t.amount)}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs text-gray-400">{fmtDate(t.date)}</span>
+                                <CategoryCombobox value={t.category} onChange={newCat => setCategory(t.id, newCat)} suggestions={customCats} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Desktop */}
+                        <table className="w-full hidden md:table">
+                          <tbody>
+                            {catTxns.map((t, i) => (
+                              <tr key={t.id} className={`border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-gray-50/30' : 'bg-gray-50/50'}`}>
+                                <td className="py-2 pl-9 pr-3 text-gray-400 text-xs whitespace-nowrap w-28">{fmtDate(t.date)}</td>
+                                <td className="px-3 py-2 text-xs text-gray-700">
+                                  <div className="flex items-center gap-1.5">
+                                    {t.fromMemory && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: '#00C896' }} title="Auto-categorized" />}
+                                    {titleCaseDesc(t.description)}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <CategoryCombobox value={t.category} onChange={newCat => setCategory(t.id, newCat)} suggestions={customCats} />
+                                </td>
+                                <td className="px-5 py-2 text-xs font-semibold tabular-nums text-right whitespace-nowrap text-gray-800 w-20">
+                                  {fmt(t.amount)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              {varRows.length > 0 && (
+                <div className="px-5 py-2 border-t border-gray-100 flex justify-between items-center">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Variable</span>
+                  <span className="text-sm font-semibold text-gray-700 tabular-nums">{fmt(varRows.reduce((s, r) => s + r.amount, 0))}</span>
+                </div>
+              )}
             </div>
 
             {/* SAVINGS */}
-            <div className="px-5 py-3 border-t border-gray-100">
-              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Savings</p>
-              {savingsRows.length > 0
-                ? savingsRows.map((r, i) => <Row key={i} {...r} />)
-                : <p className="text-xs text-gray-300 py-1.5">No savings allocations set up</p>
-              }
+            <div className="border-t border-gray-100">
+              <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Savings</p>
+              </div>
+              <div className="px-5">
+                {savingsRows.length > 0
+                  ? savingsRows.map((r, i) => <Row key={i} {...r} />)
+                  : <p className="text-xs text-gray-300 py-2">No savings allocations set up</p>
+                }
+              </div>
             </div>
 
             {/* TOTALS FOOTER */}
@@ -1723,12 +2029,12 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
               {leftover > 0 && (
                 <div className="flex justify-between items-center py-1">
                   <span className="text-sm text-gray-500">Surplus</span>
-                  <span className="text-sm font-medium tabular-nums" style={{ color: '#14A085' }}>{fmt(leftover)}</span>
+                  <span className="text-sm font-medium tabular-nums" style={{ color: '#00C896' }}>{fmt(leftover)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center py-1">
                 <span className="text-sm font-semibold text-gray-700">Total Savings</span>
-                <span className={`text-sm font-bold tabular-nums ${totalSavings > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
+                <span className={`text-sm font-bold tabular-nums ${totalSavings > 0 ? 'text-[#00C896]' : 'text-gray-300'}`}>
                   {totalSavings > 0 ? fmt(totalSavings) : '—'}
                 </span>
               </div>
@@ -1739,7 +2045,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
                 </div>
                 <span className={`text-sm font-semibold tabular-nums ${
                   savingsRate === null ? 'text-gray-300'
-                  : savingsRate >= 20 ? 'text-[#0D7377]'
+                  : savingsRate >= 20 ? 'text-[#00C896]'
                   : savingsRate >= 10 ? 'text-amber-500'
                   : 'text-red-400'
                 }`}>
@@ -1751,133 +2057,6 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
           </div>
         )
       })()}
-
-      {untagged > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-4 text-xs text-amber-700 flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-          {untagged} transaction{untagged > 1 ? 's' : ''} still need a category — click to classify
-        </div>
-      )}
-
-      {/* Transaction table — full width */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-
-          <button onClick={() => setVariableOpen(o => !o)} className="w-full px-4 py-2.5 bg-gray-50/80 flex items-center justify-between border-b border-gray-100 text-left">
-            <div className="flex items-center"><span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Variable Spending</span><HelpTip text="Day-to-day expenses that vary each month." /></div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">{monthTxns.length} transaction{monthTxns.length !== 1 ? 's' : ''}</span>
-              <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${variableOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-            </div>
-          </button>
-
-          {variableOpen && <>
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide w-28">Date</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Merchant</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide">Category</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wide w-24">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {monthTxns.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-xs">
-                      No transactions this month
-                    </td>
-                  </tr>
-                ) : monthTxns.map((t, i) => (
-                  <tr key={t.id} className={`border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                    <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">{fmtDate(t.date)}</td>
-                    <td className="px-4 py-2.5 text-gray-700 text-sm">
-                      <div className="flex items-center gap-1.5">
-                        {t.fromMemory && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" title="Auto-categorized from memory" />
-                        )}
-                        {t.description}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <CategoryCombobox value={t.category} onChange={cat => setCategory(t.id, cat)} />
-                    </td>
-                    <td className={`px-4 py-2.5 text-sm font-semibold tabular-nums text-right whitespace-nowrap ${t.type === 'credit' ? 'text-[#0D7377]' : 'text-gray-800'}`}>
-                      {t.type === 'credit' ? '+ ' : ''}{fmt(t.amount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/60 flex justify-between items-center">
-              <span className="text-xs font-medium text-gray-500">Variable total</span>
-              <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(txnSpent)}</span>
-            </div>
-          </>}
-
-          {fixedCosts.length > 0 && (
-            <>
-              <button onClick={() => setFixedOpen(o => !o)} className="w-full border-t-2 border-gray-100 px-4 py-2.5 bg-gray-50/80 flex items-center justify-between text-left">
-                <div className="flex items-center"><span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fixed Costs</span><HelpTip text="Recurring monthly expenses like rent or subscriptions." /></div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">{fixedCosts.length} item{fixedCosts.length !== 1 ? 's' : ''}</span>
-                  <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${fixedOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-                </div>
-              </button>
-              {fixedOpen && <>
-                {fixedCosts.map((cost, i) => {
-                  const hex = CATEGORY_COLOR[cost.category] || '#9CA3AF'
-                  return (
-                    <div key={cost.id} className={`flex items-center gap-4 px-4 py-2.5 border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                      <span className="flex-1 text-sm text-gray-700">{cost.name}</span>
-                      <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
-                        {cost.category}
-                      </span>
-                      <span className="text-sm font-semibold text-gray-800 tabular-nums w-24 text-right shrink-0">
-                        {fmt(cost.amount)}
-                      </span>
-                    </div>
-                  )
-                })}
-                <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/60 flex justify-between items-center">
-                  <span className="text-xs font-medium text-gray-500">Fixed total</span>
-                  <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(fixedMonthlyTotal)}</span>
-                </div>
-              </>}
-            </>
-          )}
-
-          {savingsEntries.length > 0 && (
-            <>
-              <button onClick={() => setSavingsOpen(o => !o)} className="w-full border-t-2 border-gray-100 px-4 py-2.5 bg-[#F0FDF9]/80 flex items-center justify-between text-left">
-                <span className="text-xs font-semibold text-[#0D7377] uppercase tracking-wide">Savings Allocations</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#0D7377]/60">{savingsEntries.length} item{savingsEntries.length !== 1 ? 's' : ''}</span>
-                  <svg className={`w-3.5 h-3.5 text-[#0D7377]/60 transition-transform ${savingsOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-                </div>
-              </button>
-              {savingsOpen && <>
-                {savingsEntries.map((entry, i) => {
-                  const hex = CATEGORY_COLOR[entry.category] || '#14A085'
-                  return (
-                    <div key={entry.id} className={`flex items-center gap-4 px-4 py-2.5 border-b border-gray-50 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-[#F0FDF9]/30'}`}>
-                      <span className="flex-1 text-sm text-gray-700">{entry.name}</span>
-                      <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: hex + '1a', color: hex }}>
-                        {entry.category}
-                      </span>
-                      <span className="text-sm font-semibold text-[#0D7377] tabular-nums w-24 text-right shrink-0">
-                        {fmt(entry.amount)}
-                      </span>
-                    </div>
-                  )
-                })}
-                <div className="border-t border-gray-100 px-4 py-3 bg-[#F0FDF9]/60 flex justify-between items-center">
-                  <span className="text-xs font-medium text-[#0D7377]">Savings total</span>
-                  <span className="text-sm font-semibold text-[#0D7377] tabular-nums">{fmt(savingsEntriesTotal)}</span>
-                </div>
-              </>}
-            </>
-          )}
-        </div>
 
       <AnalysisSection
         txns={txns}
@@ -1898,13 +2077,30 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
 
 // ─── SalaryPage ───────────────────────────────────────────────────────────────
 
-function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selectedYear, fixedCosts }) {
+function SalaryPage({ salary, onSalaryChange, onSalaryBlur, onSaveSalary, transactions, selectedMonth, selectedYear, fixedCosts, userGoals }) {
   const [grossDisplay, setGrossDisplay] = useState(
     salary.gross > 0 ? salary.gross.toLocaleString('en-US') : ''
   )
   const [extraDisplay, setExtraDisplay] = useState(
     salary.extraIncome > 0 ? salary.extraIncome.toLocaleString('en-US') : ''
   )
+  const [saving,    setSaving]    = useState(false)
+  const [saved,     setSaved]     = useState(false)
+  const [saveError, setSaveError] = useState(null)
+
+  async function handleSave() {
+    setSaving(true)
+    setSaveError(null)
+    setSaved(false)
+    const ok = await onSaveSalary(salary)
+    setSaving(false)
+    if (ok) {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } else {
+      setSaveError('Could not save income. Please try again.')
+    }
+  }
 
   const salaryAnnualNet = salary.gross > 0
     ? salary.gross * (1 - salary.taxRate / 100) - salary.deductions * 12
@@ -1972,153 +2168,233 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selec
     update('extraIncome', num)
   }
 
+  // 80/20 cost-vs-savings allocation
+  const suggestedCosts   = monthlyNet * 0.80
+  const suggestedSavings = monthlyNet * 0.20
+
+  const actualCosts = avgMonthlySpend !== null
+    ? fixedMonthlyTotal + avgMonthlySpend
+    : fixedMonthlyTotal > 0 ? fixedMonthlyTotal : null
+
+  const allocations = [
+    {
+      label: 'Cost Allocation', pct: 80, suggested: suggestedCosts, actual: actualCosts,
+      helper: 'All monthly expenses — fixed commitments, everyday spending, and variable costs.',
+      color: '#3B5998',
+      overMsg:  'Your total costs are above the suggested range.',
+      underMsg: 'Your total costs are below the suggested range — strong position.',
+      goodMsg:  'Your total costs are within a healthy range.',
+    },
+    {
+      label: 'Savings Allocation', pct: 20, suggested: suggestedSavings, actual: monthlySavings !== null && monthlySavings > 0 ? monthlySavings : null,
+      helper: 'Emergency fund, investments, short-term goals, and long-term wealth building.',
+      color: '#00C896',
+      overMsg:  'Your savings are exceeding the suggested target — excellent.',
+      underMsg: 'Your savings are below the suggested target.',
+      goodMsg:  'Your savings are on track with the suggested target.',
+    },
+  ]
+
   return (
-    <div className="max-w-xl">
+    <div className="space-y-5">
 
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
-        <h2 className="text-sm font-semibold text-gray-800 mb-5">Income Details</h2>
-        <div className="space-y-4">
+      {/* Stat cards — 3 across on desktop, 1 col on mobile */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-          {/* Gross Annual Salary — comma-formatted text input */}
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5">Gross Annual Salary</label>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
-              <span className="px-3 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={grossDisplay}
-                onChange={handleGrossChange}
-                placeholder="0"
-                className="flex-1 px-3 py-2.5 text-sm text-gray-800 outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Tax Rate — % suffix, consistent style */}
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5">Tax Rate</label>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
-              <span className="px-3 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none w-10 text-center shrink-0">%</span>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={salary.taxRate || ''}
-                onChange={e => update('taxRate', Number(e.target.value))}
-                placeholder="30"
-                className="flex-1 px-3 py-2.5 text-sm text-gray-800 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-            </div>
-          </div>
-
-          {/* Monthly Deductions */}
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Monthly Deductions (other)</label>
-            <p className="text-[10px] text-gray-400 mb-1.5 italic">e.g. benefits, pension, parking — deducted each month from your paycheque</p>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
-              <span className="px-3 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
-              <input
-                type="number"
-                min="0"
-                value={salary.deductions || ''}
-                onChange={e => update('deductions', Number(e.target.value))}
-                placeholder="0"
-                className="flex-1 px-3 py-2.5 text-sm text-gray-800 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-            </div>
-          </div>
-
-          {/* Other Monthly Income */}
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Other Monthly Income</label>
-            <p className="text-[10px] text-gray-400 mb-1.5 italic">e.g. freelance, rental, side income — added on top of your salary each month</p>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0D7377] transition-colors">
-              <span className="px-3 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={extraDisplay}
-                onChange={handleExtraIncomeChange}
-                placeholder="0"
-                className="flex-1 px-3 py-2.5 text-sm text-gray-800 outline-none"
-              />
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* Stat cards — 2×2 grid + full-width fifth card */}
-      <div className="grid grid-cols-2 gap-3">
-
-        {/* Card 1: Annual Net Income */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Annual Net Income</p>
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-2" style={{ color: '#8896B0' }}>Annual Net Income</p>
           <p className={`text-2xl font-semibold ${annualNet > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
             {annualNet > 0 ? fmt(annualNet) : '—'}
           </p>
           <p className="text-[10px] text-gray-400 italic mt-1.5">
-            {monthlyExtra > 0 ? 'Gross − Tax − Deductions + Other Income' : 'Gross − Tax − (Deductions × 12)'}
+            {monthlyExtra > 0 ? 'Gross − Tax − Deductions + Other' : 'Gross − Tax − (Deductions × 12)'}
           </p>
         </div>
 
-        {/* Card 2: Income to Date */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Income to Date</p>
-          <p className={`text-2xl font-semibold ${incomeToDate > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
-            {incomeToDate > 0 ? fmt(incomeToDate) : '—'}
-          </p>
-          <p className="text-[10px] text-gray-400 italic mt-1.5">
-            Monthly Net × {todayYear === selectedYear
-              ? `${todayMonthIdx - 1} mo + ${dayOfMonth} day${dayOfMonth !== 1 ? 's' : ''} (through ${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`
-              : '—'}
-          </p>
-        </div>
-
-        {/* Card 3: Monthly Net Income */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Monthly Net Income</p>
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-2" style={{ color: '#8896B0' }}>Monthly Net Income</p>
           <p className={`text-2xl font-semibold ${monthlyNet > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
             {monthlyNet > 0 ? fmt(monthlyNet) : '—'}
           </p>
           <p className="text-[10px] text-gray-400 italic mt-1.5">Annual Net ÷ 12</p>
         </div>
 
-        {/* Card 4: Monthly Savings */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Monthly Savings</p>
-          <p className={`text-2xl font-semibold ${
-            monthlySavings === null ? 'text-gray-300'
-            : monthlySavings >= 0 ? 'text-[#0D7377]' : 'text-red-500'
-          }`}>
-            {monthlySavings === null
-              ? (monthlyNet === 0 ? '—' : 'No data')
-              : (monthlySavings < 0 ? '−' : '') + fmt(Math.abs(monthlySavings))}
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-2" style={{ color: '#8896B0' }}>Income to Date</p>
+          <p className={`text-2xl font-semibold ${incomeToDate > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+            {incomeToDate > 0 ? fmt(incomeToDate) : '—'}
           </p>
           <p className="text-[10px] text-gray-400 italic mt-1.5">
-            {avgMonthlySpend === null
-              ? 'Import transactions to calculate'
-              : 'Monthly Net − Avg Spend − Fixed Costs'}
+            {todayYear === selectedYear
+              ? `Through ${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+              : 'Monthly Net × months elapsed'}
           </p>
         </div>
 
-        {/* Card 5: Projected Annual Savings — full width */}
-        <div className="col-span-2 bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Projected Annual Savings</p>
-          <p className={`text-2xl font-semibold ${
-            projectedAnnualSavings === null ? 'text-gray-300'
-            : projectedAnnualSavings >= 0 ? 'text-[#0D7377]' : 'text-red-500'
-          }`}>
-            {projectedAnnualSavings === null
-              ? (annualNet === 0 ? '—' : 'No data')
-              : (projectedAnnualSavings < 0 ? '−' : '') + fmt(Math.abs(projectedAnnualSavings))}
-          </p>
-          <p className="text-[10px] text-gray-400 italic mt-1.5">
-            {monthlySavings === null
-              ? 'Import transactions to calculate'
-              : 'Monthly Savings × 12'}
-          </p>
+      </div>
+
+      {/* Main row — form left, allocation right */}
+      <div className="flex flex-col md:flex-row gap-5 items-start">
+
+        {/* Income Details form */}
+        <div className="budgli-card rounded-xl p-6 w-full md:w-80 md:shrink-0">
+          <h2 className="text-sm font-semibold text-gray-800 mb-5">Income Details</h2>
+          <div className="space-y-4">
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-1.5">Gross Annual Salary</label>
+              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#00C896] transition-colors">
+                <span className="px-3 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={grossDisplay}
+                  onChange={handleGrossChange}
+                  onBlur={onSalaryBlur}
+                  placeholder="0"
+                  className="flex-1 px-3 py-2.5 text-sm text-gray-800 outline-none"
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">Your income details are stored in your account only and never shared.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-1.5">Tax Rate</label>
+              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#00C896] transition-colors">
+                <span className="px-3 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none w-10 text-center shrink-0">%</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={salary.taxRate || ''}
+                  onChange={e => update('taxRate', Number(e.target.value))}
+                  onBlur={onSalaryBlur}
+                  placeholder="30"
+                  className="flex-1 px-3 py-2.5 text-sm text-gray-800 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Monthly Deductions (other)</label>
+              <p className="text-[10px] text-gray-400 mb-1.5 italic">e.g. benefits, pension, parking — deducted each month from your paycheque</p>
+              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#00C896] transition-colors">
+                <span className="px-3 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={salary.deductions || ''}
+                  onChange={e => update('deductions', Number(e.target.value))}
+                  onBlur={onSalaryBlur}
+                  placeholder="0"
+                  className="flex-1 px-3 py-2.5 text-sm text-gray-800 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Other Monthly Income</label>
+              <p className="text-[10px] text-gray-400 mb-1.5 italic">e.g. freelance, rental, side income — added on top of your salary each month</p>
+              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#00C896] transition-colors">
+                <span className="px-3 py-2.5 bg-gray-50 text-gray-400 text-sm border-r border-gray-200 select-none">$</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={extraDisplay}
+                  onChange={handleExtraIncomeChange}
+                  onBlur={onSalaryBlur}
+                  placeholder="0"
+                  className="flex-1 px-3 py-2.5 text-sm text-gray-800 outline-none"
+                />
+              </div>
+            </div>
+
+          </div>
+
+          {/* Save Income button */}
+          <div className="mt-5 pt-4 border-t border-gray-100">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ backgroundColor: saved ? '#00C896' : '#0D7377', color: '#fff' }}
+            >
+              {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save Income'}
+            </button>
+            {saveError && <p className="text-xs text-red-500 mt-2">{saveError}</p>}
+          </div>
+        </div>
+
+        {/* Suggested Income Allocation — fills remaining width */}
+        <div className="flex-1 min-w-0 space-y-4">
+          <div className="budgli-card rounded-xl p-6">
+            <h2 className="text-sm font-semibold text-gray-800 mb-0.5">Suggested Income Allocation</h2>
+            <p className="text-xs text-gray-400 mb-5">
+              {monthlyNet > 0
+                ? <>Based on your monthly take-home of <span className="tabular-nums font-medium text-gray-600">{fmt(monthlyNet)}</span></>
+                : 'Add your salary details to see a personalised allocation breakdown'}
+            </p>
+
+            {allocations.map((a, i) => {
+              const status = a.actual !== null
+                ? a.actual > a.suggested * 1.1 ? 'over'
+                : a.actual < a.suggested * 0.9 ? 'under'
+                : 'good'
+                : null
+              const statusMsg =
+                status === 'over'  ? a.overMsg
+                : status === 'under' ? a.underMsg
+                : status === 'good'  ? a.goodMsg
+                : null
+              const statusColor =
+                a.label === 'Savings Allocation'
+                  ? (status === 'under' ? '#E05252' : '#00C896')
+                  : (status === 'over'  ? '#B45309' : '#00C896')
+
+              return (
+                <div key={a.label} className={`py-4 ${i < allocations.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: a.color }} />
+                      <span className="text-sm font-medium text-gray-700">{a.label}</span>
+                      <span className="text-xs text-gray-400">· {a.pct}%</span>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900 tabular-nums">
+                      {monthlyNet > 0 ? <>{fmt(a.suggested)}<span className="text-xs text-gray-400 font-normal">/mo</span></> : '—'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 mb-1.5 pl-[18px]">{a.helper}</p>
+                  {statusMsg && (
+                    <p className="text-[11px] font-medium pl-[18px]" style={{ color: statusColor }}>
+                      {statusMsg}
+                      {a.actual !== null && (
+                        <span className="text-gray-400 font-normal"> · Actual: {fmt(a.actual)}/mo</span>
+                      )}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+
+            <p className="text-xs text-gray-500 mt-4 leading-relaxed border-t border-gray-50 pt-4">
+              A common starting point is directing 80% of take-home pay toward total costs and reserving at least 20% for savings and investments.
+            </p>
+            <p className="text-[10px] text-gray-300 mt-1.5 italic">This is a suggested starting point, not financial advice.</p>
+          </div>
+
+          {/* Goal-based insight */}
+          {userGoals?.primary_goal && (
+            <div className="px-4 py-3.5 rounded-xl border border-[#0D7377]/20 bg-[#0D7377]/5 flex items-start gap-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#0D7377] shrink-0 mt-[6px]" />
+              <div>
+                <p className="text-[11px] font-semibold text-[#0D7377] uppercase tracking-[0.12em] mb-0.5">Your goal</p>
+                <p className="text-xs text-gray-600 leading-relaxed">{userGoals.primary_goal}</p>
+                {userGoals.savings_intensity && (
+                  <p className="text-[11px] text-gray-400 mt-1">Savings plan: {userGoals.savings_intensity}</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
       </div>
@@ -2127,53 +2403,46 @@ function SalaryPage({ salary, onSalaryChange, transactions, selectedMonth, selec
   )
 }
 
-function calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesProj, projectedVariable, annualNet, fixedAnnualProjected, monthsWithData }) {
+function calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesProj, projectedVariable, annualNet, fixedAnnualProjected, monthsWithData, monthlySpendTotals }) {
   if (annualNet <= 0 || monthsWithData === 0) return null
 
-  // Savings Rate: 0–40 pts (use YTD rate if available, else projected)
+  // Savings Rate: 0–50 pts — progressive curve, 50%+ earns full marks
   const rate = savingsRateYTD !== null ? savingsRateYTD : savingsRate
-  const srScore = rate === null || rate <= 0 ? 0 : Math.min((rate / 30) * 40, 40)
+  const srScore = rate === null || rate <= 0 ? 0 : Math.min(50, 50 * Math.pow(rate / 50, 0.5))
 
-  // Expense Ratio: 0–20 pts — projected variable vs net income
-  let erScore = 10
-  if (annualNet > 0 && projectedVariable !== null) {
-    const ratio = projectedVariable / annualNet
-    erScore = ratio >= 0.8 ? 0 : ratio >= 0.7 ? 3 : ratio >= 0.6 ? 8 : ratio >= 0.5 ? 13 : ratio >= 0.4 ? 17 : 20
-  }
-
-  // Cost Balance: 0–30 pts — fixed vs total projected expenses
-  let fvScore = 15
-  if (totalExpensesProj !== null && totalExpensesProj > 0) {
-    const fRatio = fixedAnnualProjected / totalExpensesProj
-    fvScore = fRatio >= 0.3 && fRatio <= 0.6 ? 30 : fRatio >= 0.2 && fRatio <= 0.7 ? 20 : 10
+  // Spending Trend: 0–40 pts — linear regression slope on monthly spend totals
+  const months = Array.isArray(monthlySpendTotals) ? monthlySpendTotals : []
+  const hasTrendData = months.length >= 2
+  let trendScore = 0
+  if (hasTrendData) {
+    const n = months.length
+    const xMean = (n - 1) / 2
+    const avgMonthlySpend = months.reduce((s, v) => s + v, 0) / n
+    const denom = months.reduce((sum, _, x) => sum + Math.pow(x - xMean, 2), 0)
+    const slope = denom === 0 ? 0 : months.reduce((sum, y, x) => sum + (x - xMean) * (y - avgMonthlySpend), 0) / denom
+    const trend = avgMonthlySpend > 0 ? slope / avgMonthlySpend : 0
+    trendScore = Math.min(40, Math.max(0, 40 * (1 - trend / 0.20)))
   }
 
   // Data completeness: 0–10 pts — how many months have transaction data
   const clarityScore = Math.round((Math.min(monthsWithData, 10) / 10) * 10)
 
   return {
-    score: Math.round(srScore + erScore + fvScore + clarityScore),
+    score: Math.round(srScore + trendScore + clarityScore),
     components: [
-      { label: 'Savings Rate',  tip: 'How much of your income you kept instead of spending.',       value: Math.round(srScore),      max: 40 },
-      { label: 'Expense Ratio', tip: 'What portion of your income went to expenses.',               value: Math.round(erScore),      max: 20 },
-      { label: 'Cost Balance',  tip: 'How well your fixed and variable costs are balanced.',         value: Math.round(fvScore),      max: 30 },
-      { label: 'Data Coverage', tip: 'How many months of transaction data are included.',            value: Math.round(clarityScore), max: 10 },
+      { label: 'Savings Rate',   tip: 'How much of your income you kept. Higher savings rates score progressively better — 50% or more earns full marks.',                                       value: Math.round(srScore),    max: 50 },
+      { label: 'Spending Trend', tip: hasTrendData ? 'Whether your monthly spending is stable or trending downward over the year — improvement is rewarded.' : 'N/A — not enough data yet. Spending Trend requires 2+ months of data.', value: Math.round(trendScore), max: 40 },
+      { label: 'Data Coverage',  tip: 'How many months of transaction data are included.',                                                                                                        value: Math.round(clarityScore), max: 10 },
     ],
   }
 }
 
-function getAnnualInsight(score, { savingsRate, savingsRateYTD }) {
-  const rate = savingsRateYTD !== null ? savingsRateYTD : savingsRate
-  if (score >= 85) return { headline: 'Outstanding year', sub: 'High savings rate and a healthy cost structure — you\'re on track' }
-  if (score >= 70) return { headline: 'Strong performance', sub: 'Solid margins this year — small optimisations could push you higher' }
-  if (score >= 55) {
-    if (rate !== null && rate < 10)
-      return { headline: 'Savings are thin', sub: 'Low savings rate YTD — review fixed and variable costs to build headroom' }
-    return { headline: 'Room to improve', sub: 'Decent year overall — import more months for a fuller picture' }
-  }
-  if (score >= 40) return { headline: 'Breaking even', sub: 'Costs are close to income — trim discretionary spending to build a buffer' }
-  if (score >= 20) return { headline: 'Costs outpacing income', sub: 'High expense ratio this year — review fixed and variable spend' }
-  return { headline: 'Needs attention', sub: 'Add salary info and import transactions to generate your score' }
+function getAnnualInsight(score) {
+  if (score >= 90) return { headline: 'Outstanding', sub: 'Exceptional savings discipline and consistent habits' }
+  if (score >= 75) return { headline: 'Excellent', sub: 'Strong savings rate and stable spending' }
+  if (score >= 60) return { headline: 'Good', sub: 'Solid foundation — push your savings rate higher to level up' }
+  if (score >= 40) return { headline: 'Fair', sub: 'Making progress — focus on saving more and spending consistently' }
+  return { headline: 'Needs work', sub: 'Start by building a regular savings habit' }
 }
 
 // ─── AnnualSummary ────────────────────────────────────────────────────────────
@@ -2239,18 +2508,26 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
   }
 
 
-  const healthScore   = calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesProj, projectedVariable, annualNet, fixedAnnualProjected, monthsWithData })
+  // Monthly variable spend totals for Spending Trend metric
+  const monthlySpendTotals = (() => {
+    const ymSpend = {}
+    for (const t of debits) {
+      const ym = yearMonthOf(t.date)
+      if (ym) ymSpend[ym] = (ymSpend[ym] || 0) + t.amount
+    }
+    return Object.keys(ymSpend).sort().map(ym => ymSpend[ym] + fixedMonthlyTotal)
+  })()
+
+  const healthScore   = calcFinancialHealthScore({ savingsRate, savingsRateYTD, totalExpensesProj, projectedVariable, annualNet, fixedAnnualProjected, monthsWithData, monthlySpendTotals })
   const annualScoreColor = healthScore === null ? '#6B7280'
-    : healthScore.score >= 85 ? '#14A085'
-    : healthScore.score >= 70 ? '#0D7377'
+    : healthScore.score >= 85 ? '#00C896'
+    : healthScore.score >= 70 ? '#0D9488'
     : healthScore.score >= 55 ? '#3B82F6'
     : healthScore.score >= 40 ? '#F59E0B'
     : healthScore.score >= 20 ? '#F97316'
     : '#EF4444'
-  const annualScoreGrade = healthScore === null ? null
-    : healthScore.score >= 85 ? 'A+' : healthScore.score >= 70 ? 'A' : healthScore.score >= 55 ? 'B'
-    : healthScore.score >= 40 ? 'C' : healthScore.score >= 20 ? 'D' : 'F'
-  const annualInsight = healthScore !== null ? getAnnualInsight(healthScore.score, { savingsRate, savingsRateYTD }) : null
+  const annualInsight = healthScore !== null ? getAnnualInsight(healthScore.score) : null
+  const [healthExpanded, setHealthExpanded] = useState(false)
 
   if (annualNet === 0 && debits.length === 0 && fixedCosts.length === 0 && savingsEntries.length === 0) {
     return (
@@ -2267,118 +2544,135 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
   return (
     <div>
 
-      {/* Performance Grade card — full width */}
+      {/* Financial Health Score card */}
       {healthScore !== null ? (
-        <div className="rounded-2xl p-6 mb-6 border border-white/10 overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #0F3460 0%, #1A1A2E 50%, #0D2137 100%)' }}>
-          <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at 15% 50%, ${annualScoreColor}18 0%, transparent 60%)` }} />
-          <div className="relative flex items-center gap-8">
-            <div className="shrink-0 w-56">
-              <div className="flex items-center gap-1 mb-4">
-                <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em]">Annual Score</p>
+        <div className="bg-white rounded-2xl p-5 mb-6 border border-gray-100 overflow-hidden budgli-card-pop" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+          {/* Score header */}
+          <div className="flex items-center gap-4 mb-5">
+            <div className="flex items-end gap-1 shrink-0">
+              <span className="text-[72px] font-black leading-none tabular-nums" style={{ color: annualScoreColor }}>
+                {healthScore.score}
+              </span>
+              <span className="text-sm font-semibold text-gray-300 leading-none mb-2.5">/100</span>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1 mb-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em]">Annual Score</p>
                 <HelpTip text="A score based on your savings, spending, and consistency." />
               </div>
-              <div className="flex items-end gap-2 mb-3">
-                <span className="text-[72px] font-black leading-none tabular-nums" style={{ color: annualScoreColor }}>
-                  {healthScore.score}
-                </span>
-                <div className="flex flex-col gap-1 mb-2">
-                  <span className="text-sm font-semibold text-white/25 leading-none">/100</span>
-                  <span className="px-2 py-0.5 rounded-md text-xs font-black leading-none" style={{ backgroundColor: annualScoreColor + '28', color: annualScoreColor }}>
-                    {annualScoreGrade}
+              <p className="text-sm font-semibold text-gray-800 leading-snug">{annualInsight.headline}</p>
+              <p className="text-xs text-gray-500 mt-0.5 leading-snug">{annualInsight.sub}</p>
+            </div>
+          </div>
+          {/* Contributors */}
+          <div className="space-y-3">
+            {healthScore.components.map(c => {
+              const pct = Math.max(0, Math.min(100, (c.value / c.max) * 100))
+              return (
+                <div key={c.label} className="flex items-center gap-3">
+                  <span className="text-xs font-medium text-gray-500 w-24 shrink-0">{c.label}</span>
+                  <div className="flex-1 h-1.5 rounded-full bg-gray-100">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: annualScoreColor }} />
+                  </div>
+                  <span className="text-xs font-bold tabular-nums w-12 text-right shrink-0" style={{ color: annualScoreColor }}>
+                    {c.value}<span className="text-gray-300 font-normal">/{c.max}</span>
                   </span>
                 </div>
-              </div>
-              <p className="text-sm font-semibold text-white leading-snug">{annualInsight.headline}</p>
-              <p className="text-xs text-white/40 mt-1 leading-snug">{annualInsight.sub}</p>
-            </div>
-            <div className="w-px bg-white/10 self-stretch" />
-            <div className="flex-1 grid grid-cols-2 gap-x-10 gap-y-5">
-              {healthScore.components.map(c => {
-                const pct = (c.value / c.max) * 100
-                return (
-                  <div key={c.label}>
-                    <div className="flex justify-between items-baseline mb-2">
-                      <span className="text-[11px] font-medium text-white/45 flex items-center">{c.label}{c.tip && <HelpTip text={c.tip} />}</span>
-                      <span className="text-xs font-bold tabular-nums" style={{ color: annualScoreColor }}>
-                        {c.value}<span className="text-white/20 font-normal">/{c.max}</span>
+              )
+            })}
+          </div>
+          {/* How is this calculated? */}
+          <div className="mt-5 pt-4 border-t border-gray-100">
+            <button
+              onClick={() => setHealthExpanded(v => !v)}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              How is this calculated?
+              <svg
+                className={`w-3 h-3 transition-transform duration-200 ${healthExpanded ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              ><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            <div className={`grid transition-all duration-300 ease-in-out ${healthExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+              <div className="overflow-hidden">
+                <div className="pt-3 space-y-2.5">
+                  {healthScore.components.map(c => (
+                    <div key={c.label} className="flex gap-3 text-xs">
+                      <span className="w-28 shrink-0 font-medium text-gray-700">
+                        {c.label} <span className="font-normal text-gray-400">{c.value}/{c.max}</span>
                       </span>
+                      <span className="text-gray-500 leading-relaxed">{c.tip}</span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-white/[0.08]">
-                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: annualScoreColor, opacity: 0.85 }} />
-                    </div>
-                  </div>
-                )
-              })}
+                  ))}
+                  <p className="text-xs text-gray-400 pt-0.5">Your score updates as you import more data.</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl p-6 mb-6 border border-white/10 flex items-center gap-4" style={{ background: 'linear-gradient(135deg, #0F3460 0%, #1A1A2E 100%)' }}>
+        <div className="bg-white rounded-2xl p-6 mb-6 border border-gray-100 flex items-center gap-4 budgli-card-pop" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
           <div>
-            <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.25em] mb-2">Annual Score</p>
-            <p className="text-2xl font-black text-white/20">—</p>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em] mb-2">Annual Score</p>
+            <p className="text-2xl font-black text-gray-200">—</p>
           </div>
-          <p className="text-xs text-white/30 ml-2">Add salary details to generate your score</p>
+          <p className="text-xs text-gray-400 ml-2">Add salary details to generate your score</p>
         </div>
       )}
 
-      {/* KPI cards — insight-tab style */}
-      <div
-        className="rounded-2xl border border-white/[0.07] overflow-hidden mb-6"
-        style={{ background: 'linear-gradient(160deg, #0F3460 0%, #1A1A2E 45%, #0D2137 100%)' }}
-      >
-        <div className="flex items-center gap-2.5 px-6 pt-5 pb-4 border-b border-white/[0.06]">
-          <BarChart3 className="w-4 h-4 text-white/30" />
-          <span className="text-[11px] font-bold text-white/30 uppercase tracking-[0.2em]">Year at a Glance</span>
+      {/* KPI cards — Year at a Glance */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart3 className="w-4 h-4" style={{ color: '#8896B0' }} />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Year at a Glance</span>
         </div>
-        <div className="p-6 grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
           {/* Annual Net Income */}
-          <div className="rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: '2px solid #0D7377' }}>
-            <div className="flex items-center gap-1.5 mb-2 text-teal-400">
+          <div className="rounded-[14px] bg-white px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: '3px solid #00C896', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', animationDelay: '60ms' }}>
+            <div className="flex items-center gap-1.5 mb-2.5" style={{ color: '#00C896' }}>
               <Wallet className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Annual Net Income</span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em]">Annual Net Income</span>
               <HelpTip text="Your take-home pay after tax and deductions." />
             </div>
-            <p className={`text-2xl font-bold tabular-nums ${annualNet > 0 ? 'text-white/80' : 'text-white/20'}`}>
+            <p className={`font-bold tabular-nums tracking-tight ${annualNet > 0 ? 'text-gray-900' : 'text-gray-300'}`} style={{ fontSize: '1.75rem', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
               {annualNet > 0 ? fmt(annualNet) : '—'}
             </p>
           </div>
 
           {/* Total Expenses YTD */}
-          <div className="rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: '2px solid #EF4444' }}>
-            <div className="flex items-center gap-1.5 mb-2" style={{ color: '#F87171' }}>
+          <div className="rounded-[14px] bg-white px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: '3px solid #E05252', boxShadow: '0 2px 16px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04)', animationDelay: '100ms' }}>
+            <div className="flex items-center gap-1.5 mb-2.5" style={{ color: '#E05252' }}>
               <TrendingDown className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Total Expenses YTD</span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em]">Total Expenses YTD</span>
             </div>
-            <p className={`text-2xl font-bold tabular-nums ${totalExpYTD > 0 ? 'text-red-400' : 'text-white/20'}`}>
+            <p className={`font-bold tabular-nums tracking-tight ${totalExpYTD > 0 ? '' : 'text-gray-300'}`} style={{ fontSize: '1.75rem', letterSpacing: '-0.02em', lineHeight: 1.1, color: totalExpYTD > 0 ? '#E05252' : undefined }}>
               {totalExpYTD > 0 ? fmt(totalExpYTD) : '—'}
             </p>
           </div>
 
           {/* Savings YTD */}
-          <div className="rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: '2px solid #14A085' }}>
-            <div className="flex items-center gap-1.5 mb-2 text-teal-400">
+          <div className="rounded-[14px] bg-white px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: '3px solid #00C896', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', animationDelay: '140ms' }}>
+            <div className="flex items-center gap-1.5 mb-2.5" style={{ color: '#00C896' }}>
               <PiggyBank className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Savings YTD</span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em]">Savings YTD</span>
             </div>
-            <p className={`text-2xl font-bold tabular-nums ${totalSavingsYTD > 0 ? 'text-teal-400' : 'text-white/20'}`}>
+            <p className={`font-bold tabular-nums tracking-tight ${totalSavingsYTD > 0 ? '' : 'text-gray-300'}`} style={{ fontSize: '1.75rem', letterSpacing: '-0.02em', lineHeight: 1.1, color: totalSavingsYTD > 0 ? '#00C896' : undefined }}>
               {totalSavingsYTD > 0 ? fmt(totalSavingsYTD) : '—'}
             </p>
           </div>
 
           {/* Savings Rate YTD */}
           {(() => {
-            const rateColor = savingsRateYTD === null ? '#374151' : savingsRateYTD >= 20 ? '#0D7377' : savingsRateYTD >= 10 ? '#F59E0B' : '#EF4444'
-            const rateTextColor = savingsRateYTD === null ? 'text-white/20' : savingsRateYTD >= 20 ? 'text-teal-400' : savingsRateYTD >= 10 ? 'text-amber-400' : 'text-red-400'
+            const rateColor = savingsRateYTD === null ? '#D1D5DB' : savingsRateYTD >= 20 ? '#00C896' : savingsRateYTD >= 10 ? '#B45309' : '#E05252'
             return (
-              <div className="rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: `2px solid ${rateColor}` }}>
-                <div className="flex items-center gap-1.5 mb-2" style={{ color: rateColor === '#374151' ? '#6B7280' : rateColor }}>
+              <div className="rounded-[14px] bg-white px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: `3px solid ${rateColor}`, boxShadow: '0 2px 16px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04)', animationDelay: '180ms' }}>
+                <div className="flex items-center gap-1.5 mb-2.5" style={{ color: rateColor }}>
                   <Percent className="w-3.5 h-3.5" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Savings Rate YTD</span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.12em]">Savings Rate YTD</span>
                   <HelpTip text="How much of your income you kept instead of spending." />
                 </div>
-                <p className={`text-2xl font-bold tabular-nums ${rateTextColor}`}>
+                <p className="font-bold tabular-nums tracking-tight" style={{ fontSize: '1.75rem', letterSpacing: '-0.02em', lineHeight: 1.1, color: savingsRateYTD === null ? '#D1D5DB' : rateColor }}>
                   {savingsRateYTD === null ? '—' : savingsRateYTD.toFixed(1) + '%'}
                 </p>
               </div>
@@ -2389,7 +2683,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
       </div>
 
       {/* Annual P&L card */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
+      <div className="budgli-card rounded-xl p-6 mb-6">
         <div className="flex items-center gap-2 mb-5">
           <BarChart3 className="w-4 h-4 text-gray-400" />
           <h2 className="text-base font-bold text-gray-800">Annual Financial Summary</h2>
@@ -2404,16 +2698,16 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
           </div>
           <div className="flex justify-between items-center py-2.5">
             <span className="text-sm text-gray-500">Income Tax ({salary.taxRate}%)</span>
-            <span className="text-sm font-medium text-red-400 tabular-nums">{gross > 0 ? '− ' + fmt(taxAmount) : '—'}</span>
+            <span className="text-sm font-medium tabular-nums" style={{ color: '#64748B' }}>{gross > 0 ? '− ' + fmt(taxAmount) : '—'}</span>
           </div>
           <div className="flex justify-between items-center py-2.5">
             <span className="text-sm text-gray-400 italic">Monthly Deductions × 12</span>
-            <span className="text-sm italic text-gray-400 tabular-nums">{salary.deductions > 0 ? '− ' + fmt(deductionsAnnual) : '—'}</span>
+            <span className="text-sm italic tabular-nums" style={{ color: '#64748B' }}>{salary.deductions > 0 ? '− ' + fmt(deductionsAnnual) : '—'}</span>
           </div>
           {monthlyExtra > 0 && (
             <div className="flex justify-between items-center py-2.5">
               <span className="text-sm text-gray-500">Other Monthly Income × 12</span>
-              <span className="text-sm font-medium text-[#0D7377] tabular-nums">+ {fmt(extraAnnual)}</span>
+              <span className="text-sm font-medium text-[#00C896] tabular-nums">+ {fmt(extraAnnual)}</span>
             </div>
           )}
         </div>
@@ -2428,11 +2722,11 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         <div className="divide-y divide-gray-50">
           <div className="flex justify-between items-center py-2.5">
             <div className="flex items-center"><span className="text-sm text-gray-600">Fixed Costs × 12</span><HelpTip text="Recurring monthly expenses like rent or subscriptions." /></div>
-            <span className="text-sm font-medium text-gray-800 tabular-nums">{fixedAnnualProjected > 0 ? fmt(fixedAnnualProjected) : '—'}</span>
+            <span className="text-sm font-medium tabular-nums" style={{ color: '#3B5998' }}>{fixedAnnualProjected > 0 ? fmt(fixedAnnualProjected) : '—'}</span>
           </div>
           <div className="flex justify-between items-center py-2.5">
             <div className="flex items-center"><span className="text-sm text-gray-600">Variable Spending YTD</span><HelpTip text="Day-to-day expenses that vary each month." /></div>
-            <span className="text-sm font-medium text-gray-800 tabular-nums">{monthsWithData > 0 ? fmt(txnSpent) : '—'}</span>
+            <span className="text-sm font-medium tabular-nums" style={{ color: '#B45309' }}>{monthsWithData > 0 ? fmt(txnSpent) : '—'}</span>
           </div>
           <div className="flex justify-between items-center py-2.5">
             <span className="text-sm text-gray-400 italic">Projected Variable (full year)</span>
@@ -2450,12 +2744,12 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         <div className="border-t border-gray-100 divide-y divide-gray-50 pt-1">
           <div className="flex justify-between items-center py-2.5">
             <span className="text-sm text-gray-600">Savings YTD</span>
-            <span className="text-sm font-medium text-[#0D7377] tabular-nums">{allSavingsYTD > 0 ? fmt(allSavingsYTD) : '—'}</span>
+            <span className="text-sm font-medium text-[#00C896] tabular-nums">{allSavingsYTD > 0 ? fmt(allSavingsYTD) : '—'}</span>
           </div>
           <div className="flex justify-between items-center py-3">
             <div className="flex items-center"><span className="text-sm font-semibold text-gray-700">Projected Savings (full year)</span><HelpTip text="Estimated year-end savings based on this month's rate." /></div>
             <span className={`text-xl font-bold tabular-nums ${
-              projectedSavings === null ? 'text-gray-300' : 'text-[#0D7377]'
+              projectedSavings === null ? 'text-gray-300' : 'text-[#00C896]'
             }`}>
               {projectedSavings === null ? '—' : fmt(projectedSavings)}
             </span>
@@ -2464,7 +2758,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
             <div className="flex items-center"><span className="text-sm text-gray-500">Savings Rate</span><HelpTip text="How much of your income you kept instead of spending." /></div>
             <span className={`text-xl font-bold tabular-nums ${
               savingsRate === null ? 'text-gray-300'
-              : savingsRate >= 20 ? 'text-[#0D7377]'
+              : savingsRate >= 20 ? 'text-[#00C896]'
               : savingsRate >= 10 ? 'text-amber-500'
               : 'text-red-400'
             }`}>
@@ -2489,7 +2783,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         const savingsRows = savingsEntries.map(e => ({
           name: e.name,
           amount: monthlyRate(e) * monthsElapsed,
-          hex: CATEGORY_COLOR[e.category] || '#14A085',
+          hex: CATEGORY_COLOR[e.category] || '#00C896',
         }))
 
         const Row = ({ name, amount, hex }) => (
@@ -2501,7 +2795,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         )
 
         return (
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-6">
+          <div className="budgli-card rounded-xl overflow-hidden mb-6">
 
             {/* Header */}
             <div className="px-5 py-3 border-b border-gray-100 flex items-baseline justify-between">
@@ -2510,44 +2804,72 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
             </div>
 
             {/* NET INCOME */}
-            <div className="px-5 py-3">
-              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Net Income</p>
-              <div className="flex justify-between items-center py-1.5">
-                <div className="flex items-center gap-1">
-                  <span className="text-sm text-gray-700">Net Income YTD</span>
-                  <HelpTip text="Take-home pay accumulated so far this year." />
+            <div>
+              <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Net Income</p>
+              </div>
+              <div className="px-5">
+                <div className="flex justify-between items-center py-2">
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm text-gray-700">Net Income YTD</span>
+                    <HelpTip text="Take-home pay accumulated so far this year." />
+                  </div>
+                  <span className={`text-sm font-semibold tabular-nums ${incomeToDate > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                    {incomeToDate > 0 ? fmt(incomeToDate) : annualNet === 0 ? 'Add salary →' : '—'}
+                  </span>
                 </div>
-                <span className={`text-sm font-semibold tabular-nums ${incomeToDate > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                  {incomeToDate > 0 ? fmt(incomeToDate) : annualNet === 0 ? 'Add salary →' : '—'}
-                </span>
               </div>
             </div>
 
             {/* FIXED COSTS */}
-            <div className="px-5 py-3 border-t border-gray-100">
-              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Fixed Costs</p>
-              {fixedRows.length > 0
-                ? fixedRows.map((r, i) => <Row key={i} {...r} />)
-                : <p className="text-xs text-gray-300 py-1.5">No fixed costs set up</p>
-              }
+            <div className="border-t border-gray-100">
+              <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Fixed Costs</p>
+              </div>
+              <div className="px-5">
+                {fixedRows.length > 0
+                  ? fixedRows.map((r, i) => <Row key={i} {...r} />)
+                  : <p className="text-xs text-gray-300 py-2">No fixed costs set up</p>
+                }
+                {fixedRows.length > 0 && (
+                  <div className="flex justify-between items-center py-2 border-t border-gray-100 mt-0.5">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Fixed</span>
+                    <span className="text-sm font-semibold text-gray-700 tabular-nums">{fmt(fixedRows.reduce((s, r) => s + r.amount, 0))}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* VARIABLE COSTS */}
-            <div className="px-5 py-3 border-t border-gray-100">
-              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Variable Costs</p>
-              {varRows.length > 0
-                ? varRows.map((r, i) => <Row key={i} {...r} />)
-                : <p className="text-xs text-gray-300 py-1.5">No variable transactions this year</p>
-              }
+            <div className="border-t border-gray-100">
+              <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Variable Costs</p>
+              </div>
+              <div className="px-5">
+                {varRows.length > 0
+                  ? varRows.map((r, i) => <Row key={i} {...r} />)
+                  : <p className="text-xs text-gray-300 py-2">No variable transactions this year</p>
+                }
+                {varRows.length > 0 && (
+                  <div className="flex justify-between items-center py-2 border-t border-gray-100 mt-0.5">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Variable</span>
+                    <span className="text-sm font-semibold text-gray-700 tabular-nums">{fmt(varRows.reduce((s, r) => s + r.amount, 0))}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* SAVINGS */}
-            <div className="px-5 py-3 border-t border-gray-100">
-              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Savings</p>
-              {savingsRows.length > 0
-                ? savingsRows.map((r, i) => <Row key={i} {...r} />)
-                : <p className="text-xs text-gray-300 py-1.5">No savings allocations set up</p>
-              }
+            <div className="border-t border-gray-100">
+              <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Savings</p>
+              </div>
+              <div className="px-5">
+                {savingsRows.length > 0
+                  ? savingsRows.map((r, i) => <Row key={i} {...r} />)
+                  : <p className="text-xs text-gray-300 py-2">No savings allocations set up</p>
+                }
+              </div>
             </div>
 
             {/* TOTALS FOOTER */}
@@ -2555,12 +2877,12 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
               {leftoverYTD > 0 && (
                 <div className="flex justify-between items-center py-1">
                   <span className="text-sm text-gray-500">Surplus</span>
-                  <span className="text-sm font-medium tabular-nums" style={{ color: '#14A085' }}>{fmt(leftoverYTD)}</span>
+                  <span className="text-sm font-medium tabular-nums" style={{ color: '#00C896' }}>{fmt(leftoverYTD)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center py-1">
                 <span className="text-sm font-semibold text-gray-700">Total Savings YTD</span>
-                <span className={`text-sm font-bold tabular-nums ${allSavingsYTD > 0 ? 'text-[#0D7377]' : 'text-gray-300'}`}>
+                <span className={`text-sm font-bold tabular-nums ${allSavingsYTD > 0 ? 'text-[#00C896]' : 'text-gray-300'}`}>
                   {allSavingsYTD > 0 ? fmt(allSavingsYTD) : '—'}
                 </span>
               </div>
@@ -2571,7 +2893,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
                 </div>
                 <span className={`text-sm font-semibold tabular-nums ${
                   savingsRateYTD === null ? 'text-gray-300'
-                  : savingsRateYTD >= 20 ? 'text-[#0D7377]'
+                  : savingsRateYTD >= 20 ? 'text-[#00C896]'
                   : savingsRateYTD >= 10 ? 'text-amber-500'
                   : 'text-red-400'
                 }`}>
@@ -2606,7 +2928,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salaries, on
     transactions.map(t => t.date?.slice(0, 4)).filter(y => y?.length === 4)
   )].sort()
 
-  const YEAR_COLORS = ['#0D7377', '#F59E0B', '#A855F7', '#EC4899']
+  const YEAR_COLORS = ['#00C896', '#F59E0B', '#A855F7', '#EC4899']
   const [selectedYear, setSelectedYear] = useState(null)
 
   if (years.length === 0) {
@@ -2695,10 +3017,10 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salaries, on
     .sort((a, b) => (b.totals[currentYear] || 0) - (a.totals[currentYear] || 0))
 
   const kpiCards = [
-    { label: 'Total Spend',    curr: currM?.totalSpend,    prev: prevM?.totalSpend,    accentColor: '#EF4444', invert: true  },
-    { label: 'Variable Spend', curr: currM?.variableSpend, prev: prevM?.variableSpend, accentColor: '#F59E0B', invert: true  },
-    { label: 'Savings',        curr: currM?.savingsYTD,    prev: prevM?.savingsYTD,    accentColor: '#14A085', invert: false },
-    { label: 'Avg Monthly',    curr: currM?.avgMonthly,    prev: prevM?.avgMonthly,    accentColor: '#0D7377', invert: true  },
+    { label: 'Total Spend',    curr: currM?.totalSpend,    prev: prevM?.totalSpend,    accentColor: '#E05252', invert: true  },
+    { label: 'Variable Spend', curr: currM?.variableSpend, prev: prevM?.variableSpend, accentColor: '#B45309', invert: true  },
+    { label: 'Savings',        curr: currM?.savingsYTD,    prev: prevM?.savingsYTD,    accentColor: '#00C896', invert: false },
+    { label: 'Avg Monthly',    curr: currM?.avgMonthly,    prev: prevM?.avgMonthly,    accentColor: '#0D9488', invert: true  },
   ]
 
   function buildPie(year) {
@@ -2719,7 +3041,9 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salaries, on
 
   // Income breakdown cards — use salary for the currently selected year
   const currSalary = salaries?.[currentYear] ?? salaries?.global ?? { gross: 0, taxRate: 30, deductions: 0 }
-  const gross    = currSalary.gross ?? 0
+  const gross      = currSalary.gross ?? 0
+  const prevSalaryData = prevYear ? (salaries?.[prevYear] ?? salaries?.global ?? { gross: 0 }) : null
+  const prevGross      = prevSalaryData?.gross ?? 0
   const taxAmt   = gross * ((currSalary.taxRate ?? 0) / 100)
   const dedAmt   = (currSalary.deductions ?? 0) * 12
   function pctOf(val) { return gross > 0 ? (val / gross) * 100 : null }
@@ -2731,317 +3055,299 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salaries, on
   const currB = annualise(currM)
   const prevB = annualise(prevM)
   const compCards = gross > 0 ? [
-    { label: 'Gross Income',      color: '#0D7377', currAmt: gross,           pct: 100,                    prevPct: 100,                    hideYoY: true, note: 'Baseline — 100%' },
-    { label: 'Income Tax',        color: '#EF4444', currAmt: taxAmt,          pct: pctOf(taxAmt),          prevPct: pctOf(taxAmt),          hideYoY: true },
-    { label: 'Deductions',        color: '#F97316', currAmt: dedAmt,          pct: pctOf(dedAmt),          prevPct: pctOf(dedAmt),          hideYoY: true },
-    { label: 'Fixed Costs',       color: '#3B82F6', currAmt: currB?.fixedAnn, pct: pctOf(currB?.fixedAnn), prevPct: pctOf(prevB?.fixedAnn), invert: true  },
-    { label: 'Variable Spending', color: '#F59E0B', currAmt: currB?.varAnn,   pct: pctOf(currB?.varAnn),   prevPct: pctOf(prevB?.varAnn),   invert: true  },
-    { label: 'Savings',           color: '#14A085', currAmt: currB?.savAnn,   pct: pctOf(currB?.savAnn),   prevPct: pctOf(prevB?.savAnn),   invert: false },
+    { label: 'Gross Income',      color: '#00C896', currAmt: gross,           pct: 100,                    prevPct: 100,                    hideYoY: true, note: 'Baseline — 100%' },
+    { label: 'Income Tax',        color: '#64748B', currAmt: taxAmt,          pct: pctOf(taxAmt),          prevPct: pctOf(taxAmt),          hideYoY: true },
+    { label: 'Deductions',        color: '#64748B', currAmt: dedAmt,          pct: pctOf(dedAmt),          prevPct: pctOf(dedAmt),          hideYoY: true },
+    { label: 'Fixed Costs',       color: '#3B5998', currAmt: currB?.fixedAnn, pct: pctOf(currB?.fixedAnn), prevPct: pctOf(prevB?.fixedAnn), invert: true  },
+    { label: 'Variable Spending', color: '#B45309', currAmt: currB?.varAnn,   pct: pctOf(currB?.varAnn),   prevPct: pctOf(prevB?.varAnn),   invert: true  },
+    { label: 'Savings',           color: '#00C896', currAmt: currB?.savAnn,   pct: pctOf(currB?.savAnn),   prevPct: pctOf(prevB?.savAnn),   invert: false },
   ] : null
 
-  return (
-    <div className="space-y-3">
+  const totalSpendChg = pctChange(currM?.totalSpend,    prevM?.totalSpend)
+  const savingsChg    = pctChange(currM?.savingsYTD,    prevM?.savingsYTD)
+  const avgMonthlyChg = pctChange(currM?.avgMonthly,    prevM?.avgMonthly)
 
-      {/* Year filter */}
-      <div className="flex items-center justify-between">
+  const currSavRate = currM && (currM.totalSpend + currM.savingsYTD) > 0
+    ? (currM.savingsYTD / (currM.totalSpend + currM.savingsYTD)) * 100 : null
+  const prevSavRate = prevM && (prevM.totalSpend + prevM.savingsYTD) > 0
+    ? (prevM.savingsYTD / (prevM.totalSpend + prevM.savingsYTD)) * 100 : null
+
+  const isImproving = prevYear != null && (
+    (totalSpendChg !== null && totalSpendChg < 0) ||
+    (savingsChg !== null && savingsChg > 0)
+  )
+
+  const bannerText = (() => {
+    if (!prevYear || !currM) return null
+    if (totalSpendChg !== null) {
+      const abs = Math.abs(currM.totalSpend - (prevM?.totalSpend ?? 0))
+      return totalSpendChg < 0
+        ? `You spent ${Math.abs(totalSpendChg).toFixed(1)}% less in ${currentYear} — ${fmt(abs)} saved vs ${prevYear}.`
+        : `Spending was up ${Math.abs(totalSpendChg).toFixed(1)}% in ${currentYear} vs ${prevYear} — ${fmt(abs)} more than last year.`
+    }
+    return `Comparing ${currentYear} to ${prevYear}.`
+  })()
+
+  const bannerSubtext = (() => {
+    if (!prevYear || !currM || !prevM) return null
+    const spendDown = totalSpendChg !== null && totalSpendChg < 0
+    const savUp     = savingsChg !== null && savingsChg > 0
+    let s1 = ''
+    if (isImproving) {
+      if (spendDown && savUp)  s1 = "You're spending less and saving more."
+      else if (spendDown)      s1 = `You spent ${Math.abs(totalSpendChg).toFixed(1)}% less in ${currentYear}.`
+      else if (savUp)          s1 = `Your savings grew ${Math.abs(savingsChg).toFixed(1)}% vs ${prevYear}.`
+    } else {
+      s1 = totalSpendChg !== null
+        ? `Spending was up ${Math.abs(totalSpendChg).toFixed(1)}% vs ${prevYear}.`
+        : `No clear improvement vs ${prevYear} yet.`
+    }
+    const rateText = currSavRate !== null && prevSavRate !== null
+      ? ` Your savings rate ${isImproving ? 'improved' : 'changed'} from ${prevSavRate.toFixed(1)}% to ${currSavRate.toFixed(1)}%.`
+      : ''
+    return s1 + rateText
+  })()
+
+  const ALLOC_COLORS = {
+    'Income Tax':        '#64748B',
+    'Deductions':        '#9CA3AF',
+    'Fixed Costs':       '#3B82F6',
+    'Variable Spending': '#F59E0B',
+    'Savings':           '#00C896',
+  }
+
+  const allocationItems = compCards
+    ? compCards
+        .filter(c => c.label !== 'Gross Income' && c.pct !== null && c.pct > 0)
+        .map(c => ({
+          label:   c.label,
+          pct:     c.pct,
+          prevPct: c.prevPct,
+          currAmt: c.currAmt,
+          color:   ALLOC_COLORS[c.label] ?? c.color,
+          invert:  c.invert ?? false,
+          hideYoY: c.hideYoY ?? false,
+        }))
+    : []
+
+  const spendRows = [
+    { label: 'Income',            curr: gross > 0 ? gross : null,  prev: prevGross > 0 ? prevGross : null, invert: false, icon: 'income'   },
+    { label: 'Variable Spending', curr: currM?.variableSpend,       prev: prevM?.variableSpend,             invert: true,  icon: 'variable' },
+    { label: 'Total Spending',    curr: currM?.totalSpend,          prev: prevM?.totalSpend,                invert: true,  icon: 'total'    },
+    { label: 'Fixed Costs',       curr: currM?.fixedYTD,            prev: prevM?.fixedYTD,                  invert: true,  icon: 'fixed'    },
+    { label: 'Savings',           curr: currM?.savingsYTD,          prev: prevM?.savingsYTD,                invert: false, icon: 'savings'  },
+    { label: 'Savings Rate',      curr: currSavRate,                 prev: prevSavRate,                      invert: false, isPct: true, icon: 'rate'    },
+    { label: 'Avg Monthly Spend', curr: currM?.avgMonthly,          prev: prevM?.avgMonthly,                invert: true,  icon: 'monthly'  },
+  ]
+
+  const topCatCards = catData.slice(0, 4).map(g => {
+    const curr = g.totals[currentYear] || 0
+    const prev = prevYear ? (g.totals[prevYear] || 0) : null
+    const chg  = pctChange(curr, prev)
+    return { name: g.name, hex: g.hex, curr, prev, chg }
+  })
+
+  function SIcon({ k }) {
+    const s = { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', strokeWidth: 1.8, className: 'w-[15px] h-[15px] shrink-0 text-gray-400' }
+    if (k === 'income')   return <svg {...s}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    if (k === 'variable') return <svg {...s}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm5.625 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>
+    if (k === 'total')    return <svg {...s}><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zm6.75-4.5c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zm6.75-4.5c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+    if (k === 'fixed')    return <svg {...s}><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/></svg>
+    if (k === 'savings')  return <svg {...s}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0-5.94-2.28m5.94 2.28-2.28 5.941"/></svg>
+    if (k === 'rate')     return <svg {...s}><circle cx="9" cy="9" r="2.25"/><circle cx="15" cy="15" r="2.25"/><line x1="16.5" y1="7.5" x2="7.5" y2="16.5" strokeLinecap="round"/></svg>
+    if (k === 'monthly')  return <svg {...s}><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"/></svg>
+    return null
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* Year selector */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400 mr-1">Year</span>
+          <span className="text-xs text-gray-400">Year</span>
           {years.map(y => (
             <button
               key={y}
               onClick={() => setSelectedYear(y)}
               className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                y === currentYear ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                y === currentYear ? 'bg-[#00C896] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
               }`}
             >{y}</button>
           ))}
         </div>
-        {prevYear && <p className="text-xs text-gray-400">Comparing {currentYear} vs {prevYear}</p>}
+        {prevYear && (
+          <p className="text-xs text-gray-400">
+            Comparing <span className="font-medium text-gray-600">{currentYear}</span> vs{' '}
+            <span className="font-medium text-gray-600">{prevYear}</span>
+          </p>
+        )}
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-4 gap-4">
-        {kpiCards.map(card => {
-          const change  = pctChange(card.curr, card.prev)
-          const isGood  = change === null ? null : (card.invert ? change < 0 : change > 0)
-          return (
-            <div key={card.label} className="bg-[#1A1A2E] rounded-xl p-5 border border-white/10">
-              <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-3">{card.label}</p>
-              <p className={`text-2xl font-bold tabular-nums ${card.curr > 0 ? 'text-white' : 'text-white/20'}`}>
-                {card.curr > 0 ? fmt(card.curr) : '—'}
-              </p>
-              {change !== null ? (
-                <div className={`mt-2 flex items-center gap-1 text-xs font-semibold ${isGood ? 'text-[#14A085]' : 'text-red-400'}`}>
-                  <span>{change > 0 ? '▲' : '▼'}</span>
-                  <span>{Math.abs(change).toFixed(1)}% vs {prevYear}</span>
-                </div>
-              ) : (
-                <div className="mt-3 h-[3px] w-7 rounded-full" style={{ backgroundColor: card.accentColor }} />
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Income Breakdown comparison cards */}
-      {compCards && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <div className="flex items-end justify-between mb-3">
-            <div>
-              <p className="text-sm font-semibold text-gray-800">Income Breakdown</p>
-              <p className="text-xs text-gray-400 mt-0.5">Each value as % of gross income ({fmt(gross)} / yr)</p>
-            </div>
-            {prevYear && <p className="text-[10px] text-gray-400">Each value as % of gross · {currentYear} vs {prevYear}</p>}
+      {/* Banner */}
+      {bannerText && (
+        <div
+          className="rounded-2xl p-6 sm:p-8 flex items-center gap-5 sm:gap-8 relative overflow-hidden"
+          style={{
+            backgroundColor: '#ffffff',
+            border: `1px solid ${isImproving ? '#BBF7D0' : '#FDE68A'}`,
+            minHeight: '148px',
+          }}
+        >
+          {/* Icon circle */}
+          <div
+            className="shrink-0 w-16 h-16 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: isImproving ? '#DCFCE7' : '#FEF3C7' }}
+          >
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              style={{ color: isImproving ? '#15803D' : '#92400E' }}>
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+            </svg>
           </div>
-          <div className="grid grid-cols-6 gap-3">
-            {compCards.map(card => {
-              const hasPct = card.pct !== null && card.pct >= 0
-              const delta  = !card.hideYoY && card.prevPct !== null && card.pct !== null ? card.pct - card.prevPct : null
-              const isGood = delta === null ? null : (card.invert ? delta < 0 : delta > 0)
+
+          {/* Text */}
+          <div className="flex-1 min-w-0">
+            <p className="text-2xl font-bold mb-1.5" style={{ color: isImproving ? '#00C896' : '#D97706' }}>
+              {isImproving ? 'Improving' : 'Room to improve'}
+            </p>
+            <p className="text-sm sm:text-[15px] leading-relaxed" style={{ color: '#1E293B' }}>
+              {bannerSubtext || bannerText}
+            </p>
+          </div>
+
+          {/* Decorative upward-trend accent */}
+          <div className="hidden sm:flex shrink-0 items-end opacity-[0.12] pointer-events-none select-none">
+            <svg width="96" height="56" viewBox="0 0 96 56" fill="none">
+              <polyline
+                points="2,52 24,36 48,22 72,10 94,2"
+                stroke={isImproving ? '#00C896' : '#D97706'}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="94" cy="2" r="4" fill={isImproving ? '#00C896' : '#D97706'} />
+            </svg>
+          </div>
+        </div>
+      )}
+
+      {/* Two-column: Spending Breakdown + Income Allocation */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* Spending Breakdown */}
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-4" style={{ color: '#8896B0' }}>Spending Breakdown</p>
+          <div className="divide-y divide-gray-50">
+            {spendRows.map(row => {
+              if (!row.curr) return null
+              const chg    = pctChange(row.curr, row.prev)
+              const isGood = chg === null ? null : (row.invert ? chg < 0 : chg > 0)
               return (
-                <div key={card.label} className="bg-gray-50 rounded-xl border border-gray-100 p-4 flex flex-col gap-1">
-                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest leading-tight">{card.label}</p>
-                  <p className="text-3xl font-bold tabular-nums mt-1" style={{ color: hasPct ? card.color : '#D1D5DB' }}>
-                    {hasPct ? card.pct.toFixed(1) + '%' : '—'}
-                  </p>
-                  <div className="min-h-[16px]">
-                    {delta !== null ? (
-                      <span className={`text-[10px] font-semibold flex items-center gap-0.5 ${isGood ? 'text-[#14A085]' : 'text-red-400'}`}>
-                        <span>{delta > 0 ? '▲' : '▼'}</span>
-                        <span>{Math.abs(delta).toFixed(1)}% vs {prevYear}</span>
+                <div key={row.label} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-center gap-2">
+                    <SIcon k={row.icon} />
+                    <span className="text-sm text-gray-600">{row.label}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {prevYear && chg !== null && (
+                      <span className={`text-xs font-semibold ${isGood ? 'text-[#00C896]' : 'text-red-400'}`}>
+                        {chg > 0 ? '+' : ''}{chg.toFixed(1)}%
                       </span>
-                    ) : card.note ? (
-                      <span className="text-[10px] text-gray-300">{card.note}</span>
-                    ) : null}
+                    )}
+                    <span className="text-sm font-semibold text-gray-800 tabular-nums w-20 text-right">
+                      {row.isPct ? `${row.curr.toFixed(1)}%` : fmt(row.curr)}
+                    </span>
                   </div>
                 </div>
               )
             })}
           </div>
         </div>
-      )}
 
-      {/* Monthly comparison bar chart — full width */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-sm font-semibold text-gray-800">Monthly Spending by Year</p>
-            <p className="text-xs text-gray-400 mt-0.5">Variable + fixed costs combined</p>
-          </div>
-          <div className="flex items-center gap-4">
-            {displayYears.map((y, i) => (
-              <div key={y} className="flex items-center gap-1.5 text-xs text-gray-500">
-                <span className="w-3 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: YEAR_COLORS[i] }} />
-                {y}
-              </div>
-            ))}
-          </div>
-        </div>
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={v => v === 0 ? '' : fmtK(v)} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-            <Tooltip formatter={(v, name) => [fmt(v), name]} itemSorter={item => -displayYears.indexOf(item.dataKey)} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} cursor={{ fill: '#F3F4F6' }} />
-            {displayYears.map((year, i) => (
-              <Bar key={year} dataKey={year} fill={YEAR_COLORS[i]} radius={[3, 3, 0, 0]} maxBarSize={32} />
-            ))}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+        {/* Where Your Income Went */}
+        {allocationItems.length > 0 ? (
+          <div className="budgli-card rounded-xl p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-1" style={{ color: '#8896B0' }}>Where Your Income Went</p>
+            <p className="text-xs text-gray-400 mb-4">{currentYear} · as % of {fmt(gross)} gross</p>
 
-      {/* Pie charts — side by side below bar chart */}
-      <div className={`grid gap-3 ${prevYear ? 'grid-cols-2' : 'grid-cols-1 max-w-sm'}`}>
-
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">{currentYear}</p>
-          <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
-          {currPie.length === 0 ? (
-            <p className="text-xs text-gray-300 text-center py-8">No data</p>
-          ) : (
-            <div className="flex gap-6 items-start">
-              <PieChart width={160} height={160}>
-                <Pie data={currPie} cx={80} cy={75} outerRadius={65} innerRadius={32} dataKey="value" strokeWidth={0}>
-                  {currPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                </Pie>
-                <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-              </PieChart>
-              <div className="flex-1 space-y-1.5 pt-1 min-w-0">
-                {currPie.map(d => (
-                  <div key={d.name} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
-                      <span className="text-gray-600 truncate">{d.name}</span>
-                    </div>
-                    <span className="font-medium text-gray-700 tabular-nums ml-2 shrink-0">{fmt(d.value)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {prevYear && (
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">{prevYear}</p>
-            <p className="text-[10px] text-gray-400 mb-3">Spending by category</p>
-            {prevPie.length === 0 ? (
-              <p className="text-xs text-gray-300 text-center py-8">No data</p>
-            ) : (
-              <div className="flex gap-6 items-start">
-                <PieChart width={160} height={160}>
-                  <Pie data={prevPie} cx={80} cy={75} outerRadius={65} dataKey="value" strokeWidth={0}>
-                    {prevPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip formatter={v => [fmt(v)]} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-                </PieChart>
-                <div className="flex-1 space-y-1.5 pt-1 min-w-0">
-                  {prevPie.map(d => (
-                    <div key={d.name} className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
-                        <span className="text-gray-600 truncate">{d.name}</span>
-                      </div>
-                      <span className="font-medium text-gray-700 tabular-nums ml-2 shrink-0">{fmt(d.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-      </div>{/* end pie row */}
-
-      {/* YoY delta */}
-      {prevYear && deltaData.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-6">
-          <p className="text-sm font-semibold text-gray-800 mb-1">Month-by-Month Delta</p>
-          <p className="text-xs text-gray-400 mb-4">{currentYear} vs {prevYear} — teal = spent less</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={deltaData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={v => fmtK(Math.abs(v))} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={44} />
-              <ReferenceLine y={0} stroke="#E5E7EB" strokeWidth={1} />
-              <Tooltip formatter={v => [fmt(Math.abs(v)), v >= 0 ? `More in ${currentYear}` : `Less in ${currentYear}`]} contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' }} />
-              <Bar dataKey="delta" radius={[3, 3, 0, 0]} maxBarSize={32}>
-                {deltaData.map((entry, i) => (
-                  <Cell key={i} fill={entry.delta <= 0 ? '#0D7377' : '#EF4444'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* YoY written insights */}
-      {prevYear && currM && prevM && (() => {
-        const insights = []
-
-        const totalChg = pctChange(currM.totalSpend, prevM.totalSpend)
-        if (totalChg !== null) {
-          const abs = Math.abs(currM.totalSpend - prevM.totalSpend)
-          insights.push({
-            text: `Total spending ${totalChg > 0 ? 'increased' : 'decreased'} by ${Math.abs(totalChg).toFixed(1)}% in ${currentYear} — ${fmt(abs)} ${totalChg > 0 ? 'more' : 'less'} than ${prevYear}.`,
-            good: totalChg < 0,
-          })
-        }
-
-        const varChg = pctChange(currM.variableSpend, prevM.variableSpend)
-        if (varChg !== null) {
-          const abs = Math.abs(currM.variableSpend - prevM.variableSpend)
-          insights.push({
-            text: `Variable spending ${varChg > 0 ? 'rose' : 'fell'} by ${Math.abs(varChg).toFixed(1)}% (${fmt(abs)}) compared to ${prevYear}.`,
-            good: varChg < 0,
-          })
-        }
-
-        if (currM.savingsYTD > 0 || prevM.savingsYTD > 0) {
-          const savChg = pctChange(currM.savingsYTD, prevM.savingsYTD)
-          if (savChg !== null) {
-            insights.push({
-              text: `You saved ${fmt(currM.savingsYTD)} in ${currentYear} vs ${fmt(prevM.savingsYTD)} in ${prevYear} — a ${savChg > 0 ? '+' : ''}${savChg.toFixed(1)}% change year-over-year.`,
-              good: savChg > 0,
-            })
-          }
-        }
-
-        const catChanges = catData
-          .map(g => ({ name: g.name, delta: (g.totals[currentYear] || 0) - (g.totals[prevYear] || 0), prev: g.totals[prevYear] || 0 }))
-          .filter(c => c.prev > 0)
-          .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-        if (catChanges.length > 0) {
-          const top = catChanges[0]
-          const pct = top.prev > 0 ? (Math.abs(top.delta) / top.prev * 100).toFixed(1) : null
-          insights.push({
-            text: `The biggest shift was in ${top.name} — ${top.delta > 0 ? 'up' : 'down'} ${fmt(Math.abs(top.delta))}${pct ? ` (${pct}%)` : ''} year-over-year.`,
-            good: top.delta < 0,
-          })
-        }
-
-        const avgChg = pctChange(currM.avgMonthly, prevM.avgMonthly)
-        if (avgChg !== null) {
-          insights.push({
-            text: `Average monthly spend was ${fmt(currM.avgMonthly)} in ${currentYear}, ${avgChg > 0 ? 'up' : 'down'} from ${fmt(prevM.avgMonthly)} in ${prevYear}.`,
-            good: avgChg < 0,
-          })
-        }
-
-        if (insights.length === 0) return null
-        return (
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
-            <p className="text-sm font-semibold text-gray-800 mb-4">{currentYear} vs {prevYear} — Key Changes</p>
-            <div className="grid grid-cols-2 gap-3">
-              {insights.map((ins, i) => (
-                <div key={i} className="bg-gray-50 rounded-lg border-l-4 p-3" style={{ borderLeftColor: ins.good ? '#0D7377' : '#F59E0B' }}>
-                  <p className="text-[12px] text-gray-600 leading-snug">{ins.text}</p>
-                </div>
+            {/* Stacked bar */}
+            <div className="flex h-7 rounded-lg overflow-hidden mb-5">
+              {allocationItems.map(item => (
+                <div
+                  key={item.label}
+                  style={{ flex: item.pct, backgroundColor: item.color }}
+                  title={`${item.label}: ${item.pct.toFixed(1)}%`}
+                />
               ))}
             </div>
-          </div>
-        )
-      })()}
 
-      {/* Category breakdown */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <p className="text-sm font-semibold text-gray-800 mb-5">Spending by Category Group</p>
-        {catData.length === 0 ? (
-          <p className="text-xs text-gray-300 text-center py-6">No category data available</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-x-10 gap-y-5">
-            {catData.map(g => {
-              const maxVal = Math.max(...displayYears.map(y => g.totals[y] || 0), 1)
-              return (
-                <div key={g.name}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.hex }} />
-                    <span className="text-xs font-semibold text-gray-700">{g.name}</span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {displayYears.map((year, i) => (
-                      <div key={year} className="flex items-center gap-2">
-                        <span className="text-[10px] text-gray-400 w-8 shrink-0 tabular-nums">{year}</span>
-                        <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${((g.totals[year] || 0) / maxVal) * 100}%`,
-                              backgroundColor: YEAR_COLORS[i],
-                            }}
-                          />
-                        </div>
-                        <span className="text-[10px] font-semibold text-gray-600 tabular-nums w-18 text-right shrink-0" style={{ minWidth: '4.5rem' }}>
-                          {g.totals[year] > 0 ? fmt(g.totals[year]) : '—'}
+            {/* Legend */}
+            <div className="space-y-2.5">
+              {allocationItems.map(item => {
+                const delta  = !item.hideYoY && item.prevPct !== null ? item.pct - item.prevPct : null
+                const isGood = delta === null ? null : (item.invert ? delta < 0 : delta > 0)
+                return (
+                  <div key={item.label} className="flex items-center gap-2 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                    <span className="flex-1 text-xs text-gray-600 min-w-0 truncate">{item.label}</span>
+                    {item.currAmt != null && item.currAmt > 0 && (
+                      <span className="text-xs text-gray-500 tabular-nums shrink-0">{fmt(item.currAmt)}</span>
+                    )}
+                    <span className="text-xs font-semibold text-gray-700 tabular-nums shrink-0 w-10 text-right">{item.pct.toFixed(1)}%</span>
+                    {prevYear && !item.hideYoY ? (
+                      delta !== null ? (
+                        <span className={`text-xs font-semibold shrink-0 w-14 text-right ${isGood ? 'text-[#00C896]' : 'text-red-400'}`}>
+                          {delta > 0 ? '+' : ''}{delta.toFixed(1)}pp
                         </span>
-                      </div>
-                    ))}
+                      ) : <span className="w-14 shrink-0" />
+                    ) : null}
                   </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="budgli-card rounded-xl p-5 flex flex-col justify-center items-center text-center min-h-[200px]">
+            <p className="text-sm font-medium text-gray-500 mb-1">Add income to see allocation</p>
+            <p className="text-xs text-gray-400">Set your gross salary in Settings → Income</p>
+          </div>
+        )}
+
+      </div>
+
+      {/* What Changed Most — top 4 categories */}
+      {topCatCards.length > 0 && (
+        <div className="budgli-card rounded-xl p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-4" style={{ color: '#8896B0' }}>Top Categories</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {topCatCards.map(cat => {
+              const isGood = cat.chg === null ? null : cat.chg < 0
+              return (
+                <div key={cat.name} className="budgli-card rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: cat.hex + '22' }}
+                    >
+                      <CatIcon name={cat.name} hex={cat.hex} />
+                    </span>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide leading-tight" style={{ color: '#9CA3AF' }}>{cat.name}</p>
+                  </div>
+                  <p className="text-xl font-bold tabular-nums text-gray-800 mb-1">{fmt(cat.curr)}</p>
+                  {cat.chg !== null ? (
+                    <p className={`text-xs font-semibold ${isGood ? 'text-[#00C896]' : 'text-red-400'}`}>
+                      {cat.chg > 0 ? '+' : ''}{cat.chg.toFixed(1)}% vs {prevYear}
+                    </p>
+                  ) : prevYear && cat.prev === 0 ? (
+                    <p className="text-xs text-gray-400">New in {currentYear}</p>
+                  ) : null}
                 </div>
               )
             })}
           </div>
-        )}
-      </div>
-
+        </div>
+      )}
 
     </div>
   )
@@ -3051,10 +3357,10 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salaries, on
 
 function LoadingSpinner() {
   return (
-    <div className="min-h-screen bg-[#1A1A2E] flex items-center justify-center">
+    <div className="min-h-screen bg-[#F7F8FA] flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
-        <div className="w-8 h-8 border-2 border-white/20 border-t-[#14A085] rounded-full animate-spin" />
-        <p className="text-white/40 text-sm">Loading…</p>
+        <div className="w-8 h-8 border-2 border-gray-200 border-t-[#00C896] rounded-full animate-spin" />
+        <p className="text-gray-400 text-sm">Loading…</p>
       </div>
     </div>
   )
@@ -3077,7 +3383,7 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
     {
       num: 1,
       title: 'Set your income',
-      desc: 'Add your gross salary, tax rate, and deductions so Budgr can calculate your net income and savings rate.',
+      desc: "Tell us what you earn. We'll calculate your take-home pay and savings rate.",
       page: 'salary',
       label: 'Set Income',
       done: hasIncome,
@@ -3091,7 +3397,7 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
     {
       num: 2,
       title: 'Upload a CSV',
-      desc: 'Download your bank statement as a CSV and import it. Works with RBC, TD, Scotiabank, BMO, and CIBC.',
+      desc: 'Upload a bank statement. Works with RBC, TD, Scotiabank, BMO, and CIBC. Your file is never stored.',
       page: 'transactions',
       label: 'Import CSV',
       done: hasTransactions,
@@ -3124,7 +3430,7 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
     {
       num: 4,
       title: 'Review your dashboard',
-      desc: 'See your monthly spending breakdown, category totals, savings rate, and year-to-date summary.',
+      desc: 'See where your money went — and how much you kept.',
       page: 'dashboard',
       label: 'View Dashboard',
       done: allDone,
@@ -3144,35 +3450,35 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
 
       <div className="mb-6">
         <h2 className="text-xl font-bold text-gray-900">Get Started</h2>
-        <p className="text-sm text-gray-400 mt-1">Complete these four steps to get the most out of Budgr.</p>
+        <p className="text-sm text-gray-400 mt-1">Complete these four steps to get the most out of Budgli.</p>
       </div>
 
       {/* Progress bar */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
+      <div className="budgli-card rounded-xl p-5 mb-4">
         <div className="flex items-center justify-between mb-2.5">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Setup progress</span>
-          <span className="text-xs font-medium tabular-nums" style={{ color: completedCount === 4 ? '#0D7377' : '#6B7280' }}>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: '#8896B0' }}>Setup progress</span>
+          <span className="text-xs font-medium tabular-nums" style={{ color: completedCount === 4 ? '#00C896' : '#6B7280' }}>
             {completedCount} / 4 complete
           </span>
         </div>
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-500"
-            style={{ backgroundColor: '#0D7377', width: `${(completedCount / 4) * 100}%` }}
+            style={{ backgroundColor: '#00C896', width: `${(completedCount / 4) * 100}%` }}
           />
         </div>
       </div>
 
       {/* Try Demo */}
       {onTryDemo && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5 mb-4 flex items-center justify-between gap-4">
+        <div className="budgli-card rounded-xl p-5 mb-4 flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-gray-800">Not ready to connect your data?</p>
-            <p className="text-xs text-gray-400 mt-0.5">Explore Budgr with realistic demo data — no setup required.</p>
+            <p className="text-sm font-semibold text-gray-800">Want to see Budgli first?</p>
+            <p className="text-xs text-gray-400 mt-0.5">Explore Budgli with realistic demo data — no setup required.</p>
           </div>
           <button
             onClick={onTryDemo}
-            className="shrink-0 bg-amber-400 hover:bg-amber-300 text-amber-900 text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+            className="shrink-0 bg-[#0D7377] hover:bg-[#0b6268] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
           >
             Try Demo →
           </button>
@@ -3184,12 +3490,13 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
         {steps.map(step => (
           <div
             key={step.num}
-            className={`bg-white rounded-xl border border-gray-100 p-5 flex items-start gap-4 transition-opacity ${step.done ? 'opacity-60' : ''}`}
+            className={`rounded-xl p-5 flex items-start gap-4 ${step.done ? 'border border-[#00C896]/20' : 'budgli-card'}`}
+            style={step.done ? { background: 'rgba(0,200,150,0.04)' } : {}}
           >
             {/* Circle indicator */}
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-              style={{ backgroundColor: step.done ? '#0D7377' : '#1A1A2E' }}
+              style={{ backgroundColor: step.done ? '#00C896' : '#1A1F2E' }}
             >
               {step.done ? (
                 <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -3203,11 +3510,11 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
             {/* Text */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <span className={`text-sm font-semibold ${step.done ? 'text-gray-400' : 'text-gray-800'}`}>
+                <span className="text-sm font-semibold text-gray-800">
                   {step.title}
                 </span>
                 {step.done && (
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#0D737715', color: '#0D7377' }}>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#00C89615', color: '#00A87A' }}>
                     Done
                   </span>
                 )}
@@ -3219,8 +3526,8 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
             {!step.done && (
               <button
                 onClick={() => onNavigate(step.page)}
-                className="shrink-0 bg-[#1A1A2E] text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-[#0b6165] transition-colors whitespace-nowrap"
-                style={{ backgroundColor: '#0D7377' }}
+                className="shrink-0 text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+                style={{ backgroundColor: '#1A1F2E' }}
               >
                 {step.label} →
               </button>
@@ -3229,133 +3536,18 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
         ))}
       </div>
 
-    </div>
-  )
-}
-
-// ─── AuthScreen ──────────────────────────────────────────────────────────────
-
-function AuthScreen() {
-  const [mode, setMode]       = useState('login')
-  const [email, setEmail]     = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError]     = useState('')
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-    try {
-      const { error: err } = mode === 'login'
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password })
-      if (err) setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleGoogle() {
-    setError('')
-    const { error: err } = await supabase.auth.signInWithOAuth({ provider: 'google' })
-    if (err) setError(err.message)
-  }
-
-  return (
-    <div className="min-h-screen bg-[#1A1A2E] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <p className="text-white font-bold text-3xl tracking-tight">Budgr</p>
-          <p className="text-white/40 text-sm mt-1">Your personal finance dashboard</p>
-        </div>
-
-        {/* Card */}
-        <div className="bg-[#0F3460] rounded-2xl border border-white/10 p-8 shadow-2xl">
-
-          {/* Mode toggle */}
-          <div className="flex bg-black/20 rounded-lg p-1 mb-6">
-            <button
-              onClick={() => { setMode('login'); setError('') }}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-                mode === 'login' ? 'bg-[#0D7377] text-white' : 'text-white/50 hover:text-white/80'
-              }`}
-            >
-              Log In
-            </button>
-            <button
-              onClick={() => { setMode('signup'); setError('') }}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-                mode === 'signup' ? 'bg-[#0D7377] text-white' : 'text-white/50 hover:text-white/80'
-              }`}
-            >
-              Sign Up
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs text-white/50 mb-1.5">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                placeholder="you@example.com"
-                className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-[#14A085] transition-colors"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-white/50 mb-1.5">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                placeholder="••••••••"
-                className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-[#14A085] transition-colors"
-              />
-            </div>
-
-            {error && (
-              <p className="text-red-400/90 text-xs py-1">{error}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
-            >
-              {loading ? '…' : mode === 'login' ? 'Log In' : 'Create Account'}
-            </button>
-          </form>
-
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="text-white/30 text-xs">or</span>
-            <div className="flex-1 h-px bg-white/10" />
-          </div>
-
+      {/* Completion CTA */}
+      {allDone && (
+        <div className="mt-4">
           <button
-            onClick={handleGoogle}
-            className="w-full flex items-center justify-center gap-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
+            onClick={() => onNavigate('dashboard')}
+            className="w-full py-3 px-6 rounded-xl text-sm font-semibold bg-[#0D7377] hover:bg-[#0b6268] text-white transition-colors"
           >
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-            </svg>
-            Continue with Google
+            Go to your Dashboard →
           </button>
-
         </div>
-      </div>
+      )}
+
     </div>
   )
 }
@@ -3410,20 +3602,20 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href     = url
-    a.download = `budgr-export-${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `budgli-export-${new Date().toISOString().slice(0, 10)}.csv`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
 
-  const lbl = 'text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4'
+  const lbl = 'text-[11px] font-semibold uppercase tracking-[0.15em] mb-4 text-[#8896B0]'
 
   return (
     <div className="max-w-lg space-y-4">
 
       {/* Appearance */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
+      <div className="budgli-card rounded-xl p-6">
         <p className={lbl}>Appearance</p>
         <div className="flex items-center justify-between">
           <div>
@@ -3434,7 +3626,7 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
             onClick={onToggleDark}
             role="switch"
             aria-checked={darkMode}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${darkMode ? 'bg-[#0D7377]' : 'bg-gray-200'}`}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${darkMode ? 'bg-[#00C896]' : 'bg-gray-200'}`}
           >
             <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
@@ -3442,7 +3634,7 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
       </div>
 
       {/* Account */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
+      <div className="budgli-card rounded-xl p-6">
         <p className={lbl}>Account</p>
         <div className="flex items-center justify-between">
           <div>
@@ -3462,7 +3654,7 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
             <p className="text-xs text-gray-400 mt-0.5">We'll send a reset link to your email</p>
           </div>
           {pwSent ? (
-            <span className="text-xs font-medium text-[#0D7377]">Reset email sent!</span>
+            <span className="text-xs font-medium text-[#00C896]">Reset email sent!</span>
           ) : (
             <button
               onClick={handleResetPassword}
@@ -3475,7 +3667,7 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
       </div>
 
       {/* Profile */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
+      <div className="budgli-card rounded-xl p-6">
         <p className={lbl}>Profile</p>
         <label className="block text-xs text-gray-500 mb-1.5">Display Name</label>
         <div className="flex gap-2">
@@ -3485,12 +3677,12 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
             onChange={e => { setDisplayName(e.target.value); setNameSaved(false) }}
             onKeyDown={e => e.key === 'Enter' && handleSaveName()}
             placeholder="Your name"
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#0D7377] transition-colors"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#00C896] transition-colors"
           />
           <button
             onClick={handleSaveName}
             disabled={nameSaving || !displayName.trim()}
-            className="px-4 py-2.5 rounded-lg text-xs font-medium bg-[#0D7377] text-white hover:bg-[#0b6165] transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] text-center"
+            className="px-4 py-2.5 rounded-lg text-xs font-medium bg-[#1A1F2E] text-white hover:bg-[#2d3748] transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] text-center"
           >
             {nameSaving ? '…' : nameSaved ? 'Saved ✓' : 'Save'}
           </button>
@@ -3498,7 +3690,7 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
       </div>
 
       {/* Data */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
+      <div className="budgli-card rounded-xl p-6">
         <p className={lbl}>Data</p>
         <div className="space-y-3">
 
@@ -3556,7 +3748,7 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
       </div>
 
       {/* About */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
+      <div className="budgli-card rounded-xl p-6">
         <p className={lbl}>About</p>
         <div className="space-y-3">
           <div className="flex justify-between items-center">
@@ -3565,13 +3757,13 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">Support</span>
-            <a href="mailto:support@budgr.app" className="text-sm text-[#0D7377] font-medium hover:underline">
-              support@budgr.app
+            <a href="mailto:support@budgli.com" className="text-sm text-[#00C896] font-medium hover:underline">
+              support@budgli.com
             </a>
           </div>
           <div className="pt-3 border-t border-gray-100">
             <p className="text-xs text-gray-400 leading-relaxed">
-              Budgr is a personal finance dashboard for tracking spending, categorizing transactions,
+              Budgli is a personal finance dashboard for tracking spending, categorizing transactions,
               and understanding your savings rate — all synced to your account.
             </p>
           </div>
@@ -3618,12 +3810,20 @@ export default function App() {
   const [dashFixedOpen, setDashFixedOpen]       = useState(false)
   const [dashSavingsOpen, setDashSavingsOpen]   = useState(false)
   const [isDemoMode, setIsDemoMode]         = useState(false)
+  const [userGoals, setUserGoals]               = useState(null)
+  const [showGoalOnboarding, setShowGoalOnboarding] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen]       = useState(false)
   const [reloadKey, setReloadKey]           = useState(0)
+  const [pendingImport, setPendingImport]   = useState(null)
+  const [pendingMapper, setPendingMapper]   = useState(null)
+  const [importing, setImporting]           = useState(false)
+  const toastTimerRef = useRef(null)
   const [darkMode, setDarkMode]             = useState(() => {
     try { return localStorage.getItem('budgr_dark') === 'true' } catch { return false }
   })
   const dataLoadedFor   = useRef(null)
   const salaryTimerRef  = useRef(null)
+  const pendingSalaryRef = useRef(null)
   const csvInputRef     = useRef(null)
 
   const dedupKey = t => `${t.date}|${t.amount}|${t.description.toUpperCase().trim()}`
@@ -3635,11 +3835,42 @@ export default function App() {
 
   function toggleDarkMode() { setDarkMode(d => !d) }
 
+  function freqCacheKey() { return `budgr_freqs_${user?.id || 'anon'}` }
+  function loadFreqCache() {
+    try { return JSON.parse(localStorage.getItem(freqCacheKey()) || '{}') } catch { return {} }
+  }
+  function saveFreqCache(id, freq) {
+    if (isDemoMode || !user) return
+    try {
+      const map = loadFreqCache(); map[id] = freq
+      localStorage.setItem(freqCacheKey(), JSON.stringify(map))
+    } catch {}
+  }
+  function removeFreqCache(id) {
+    if (isDemoMode || !user) return
+    try {
+      const map = loadFreqCache(); delete map[id]
+      localStorage.setItem(freqCacheKey(), JSON.stringify(map))
+    } catch {}
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+        setSalaries({})
+        setTransactions([])
+        setFixedCosts([])
+        setSavingsEntries([])
+        setCustomTags([])
+        setUserGoals(null)
+        setCategoryMemory({})
+        setCsvUploads([])
+        setDedupKeyCache(new Set())
+        dataLoadedFor.current = null
+      }
       setUser(session?.user ?? null)
     })
     return () => subscription.unsubscribe()
@@ -3647,7 +3878,20 @@ export default function App() {
 
   useEffect(() => {
     if (user === undefined) return
-    if (user === null) { setLoading(false); dataLoadedFor.current = null; return }
+    if (user === null) {
+      setSalaries({})
+      setTransactions([])
+      setFixedCosts([])
+      setSavingsEntries([])
+      setCustomTags([])
+      setUserGoals(null)
+      setCategoryMemory({})
+      setCsvUploads([])
+      setDedupKeyCache(new Set())
+      setLoading(false)
+      dataLoadedFor.current = null
+      return
+    }
     // supabase.auth.updateUser fires USER_UPDATED which triggers this effect again
     // for the same user — skip the full reload when only metadata changed.
     if (dataLoadedFor.current === user.id) return
@@ -3656,12 +3900,13 @@ export default function App() {
     async function loadData() {
       setLoading(true)
       try {
-        const [txnRes, memRes, fixedRes, salaryRes, tagsRes] = await Promise.all([
+        const [txnRes, memRes, fixedRes, salaryRes, tagsRes, goalsRes] = await Promise.all([
           supabase.from('transactions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
           supabase.from('category_memory').select('*').eq('user_id', user.id),
           supabase.from('fixed_costs').select('*').eq('user_id', user.id),
           supabase.from('salary_settings').select('*').eq('user_id', user.id),
           supabase.from('custom_tags').select('*').eq('user_id', user.id),
+          supabase.from('user_goals').select('*').eq('user_id', user.id).maybeSingle(),
         ])
         const storedUploads = JSON.parse(localStorage.getItem(`csvUploads_${user.id}`) || '[]')
         setCsvUploads(storedUploads)
@@ -3696,7 +3941,8 @@ export default function App() {
         }
 
         if (fixedRes.data) {
-          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category, frequency: r.frequency ?? 'monthly', isSavings: r.is_savings ?? isSaving(r.category), year: r.year ?? null, start_month: r.start_month ?? null }))
+          const freqCache = loadFreqCache()
+          const rows = fixedRes.data.map(r => ({ id: r.id, name: r.name, amount: r.amount, category: r.category, frequency: freqCache[r.id] ?? r.frequency ?? 'monthly', isSavings: r.is_savings ?? isSaving(r.category), year: r.year ?? null, start_month: r.start_month ?? null }))
           setFixedCosts(rows.filter(r => !r.isSavings))
           setSavingsEntries(rows.filter(r => r.isSavings))
         }
@@ -3705,10 +3951,10 @@ export default function App() {
           setCustomTags(tagsRes.data.map(r => ({ id: r.id, category: r.category, tag: r.tag })))
         }
 
-        if (salaryRes.data?.length) {
+        {
           const map = {}
-          for (const row of salaryRes.data) {
-            const key = row.year || 'global'
+          for (const row of salaryRes.data ?? []) {
+            const key = row.year != null ? String(row.year) : 'global'
             map[key] = {
               gross: row.gross_salary ?? 0,
               taxRate: row.tax_rate ?? 30,
@@ -3716,7 +3962,32 @@ export default function App() {
               extraIncome: row.extra_income ?? 0,
             }
           }
+          // Merge localStorage write-ahead: prefer localStorage ONLY for entries
+          // written in the last 5 s (in-flight writes during a refresh). Older
+          // localStorage entries lose to the authoritative Supabase data.
+          try {
+            const lsRaw = localStorage.getItem(`budgr_salary_${user.id}`)
+            const lsMap = lsRaw ? JSON.parse(lsRaw) : {}
+            for (const [year, entry] of Object.entries(lsMap)) {
+              const isInFlight = (entry._ts ?? 0) > Date.now() - 5_000
+              if (!map[year] || isInFlight) {
+                const { _ts, ...rest } = entry
+                map[year] = rest
+              }
+            }
+          } catch {}
           setSalaries(map)
+        }
+
+        // User goals — gracefully handles missing table
+        {
+          const seenKey = `budgr_goals_seen_${user.id}`
+          if (!goalsRes.error && goalsRes.data) {
+            setUserGoals(goalsRes.data)
+            if (!goalsRes.data.onboarding_completed) setShowGoalOnboarding(true)
+          } else if (!localStorage.getItem(seenKey)) {
+            setShowGoalOnboarding(true)
+          }
         }
 
       } catch (err) {
@@ -3727,16 +3998,62 @@ export default function App() {
     }
 
     loadData()
-    return () => { dataLoadedFor.current = null }
   }, [user, reloadKey])
 
+  // Track key page views. Add new pages here as the product grows.
+  useEffect(() => {
+    if (activePage === 'dashboard')        track('dashboard_viewed')
+    if (activePage === 'savings-forecast') track('savings_forecast_viewed')
+    // Future: track('pricing_viewed') when a pricing page is added
+    // Future: track('upgrade_clicked') on the upgrade CTA
+  }, [activePage])
+
+  async function saveUserGoals(goals) {
+    const record = {
+      user_id: user.id,
+      primary_goal:        goals.primary_goal        || null,
+      biggest_challenge:   goals.biggest_challenge   || null,
+      preferred_help_type: goals.preferred_help_type || null,
+      savings_goal:        goals.savings_goal        || null,
+      savings_intensity:   goals.savings_intensity   || null,
+      onboarding_completed: goals.onboarding_completed ?? true,
+    }
+    setUserGoals(record)
+    setShowGoalOnboarding(false)
+    try {
+      localStorage.setItem(`budgr_goals_seen_${user.id}`, 'true')
+      await supabase.from('user_goals').upsert(record, { onConflict: 'user_id' })
+    } catch {}
+  }
+
+  function handleGoalSkip() {
+    setShowGoalOnboarding(false)
+    try { localStorage.setItem(`budgr_goals_seen_${user.id}`, 'true') } catch {}
+  }
+
   function enterDemoMode() {
+    // Pre-populate demo forecast balances so the Savings Forecast page looks realistic
+    try {
+      const demoForecast = JSON.parse(localStorage.getItem('budgr_forecast_demo') || '{}')
+      if (!demoForecast.balances || Object.keys(demoForecast.balances).length === 0) {
+        localStorage.setItem('budgr_forecast_demo', JSON.stringify({
+          balances: {
+            'RRSP Contribution|RRSP': 24000,
+            'Emergency Fund|Savings': 8500,
+            'TFSA Index Fund|TFSA': 15000,
+          },
+          rateOverrides: {},
+          contribAdj: 0,
+          goals: [{ id: 'demo-goal-1', name: 'House Down Payment', target: 80000, targetDate: '2029-01-01' }],
+        }))
+      }
+    } catch {}
     setIsDemoMode(true)
     setTransactions(DEMO_TRANSACTIONS)
     setFixedCosts(DEMO_FIXED_COSTS)
     setSavingsEntries(DEMO_SAVINGS_ENTRIES)
-    setSalaries({ [DEMO_YEAR]: DEMO_SALARY })
-    setSelectedYear(DEMO_YEAR)
+    setSalaries({ [String(DEMO_YEAR)]: DEMO_SALARY })
+    setSelectedYear(String(DEMO_YEAR))
     setSelectedMonth('05')
     setActivePage('dashboard')
   }
@@ -3756,10 +4073,10 @@ export default function App() {
 
   async function addFixedCost(cost, year) {
     const freq = cost.frequency ?? 'monthly'
-    if (isDemoMode) {
-      setFixedCosts(prev => [...prev, { id: `demo-new-${Date.now()}`, name: cost.name, amount: cost.amount, category: cost.category, frequency: freq, isSavings: false, year: year ?? null, start_month: null }])
-      return
-    }
+    const tempId = `temp-${Date.now()}`
+    const optimistic = { id: tempId, name: cost.name, amount: cost.amount, category: cost.category, frequency: freq, isSavings: false, year: year ?? null, start_month: null }
+    setFixedCosts(prev => [...prev, optimistic])
+    if (isDemoMode) return
     const base = { user_id: user.id, name: cost.name, amount: cost.amount, category: cost.category }
     let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: false, year }).select().single()
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: false }).select().single())
@@ -3769,7 +4086,10 @@ export default function App() {
       if (year && !data.year) {
         await supabase.from('fixed_costs').update({ year }).eq('id', data.id).eq('user_id', user.id)
       }
-      setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: false, year: data.year ?? year ?? null }])
+      saveFreqCache(data.id, freq)
+      setFixedCosts(prev => prev.map(c => c.id === tempId ? { ...c, id: data.id, year: data.year ?? year ?? null } : c))
+    } else {
+      setFixedCosts(prev => prev.filter(c => c.id !== tempId))
     }
   }
 
@@ -3788,15 +4108,17 @@ export default function App() {
       if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
       if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
       if (!error && data) {
+        saveFreqCache(data.id, freq)
         setFixedCosts(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: data.frequency ?? freq, isSavings: false, year: data.year ?? current.year ?? null, start_month: data.start_month ?? monthInt }])
       }
     } else {
+      if ('frequency' in changes) saveFreqCache(id, changes.frequency)
       setFixedCosts(prev => prev.map(c => c.id === id ? { ...c, ...changes } : c))
       if (!isDemoMode) {
         const { error } = await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
         if (error) {
           const { frequency: _f, ...rest } = changes
-          await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
+          if (Object.keys(rest).length > 0) await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
         }
       }
     }
@@ -3804,15 +4126,19 @@ export default function App() {
 
   async function deleteFixedCost(id) {
     setFixedCosts(prev => prev.filter(c => c.id !== id))
-    if (!isDemoMode) await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
+    removeFreqCache(id)
+    if (!isDemoMode) {
+      const { error } = await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
+      if (error) console.error('[budgr] deleteFixedCost failed:', error.message)
+    }
   }
 
   async function addSavingsEntry(entry, year) {
     const freq = entry.frequency ?? 'monthly'
-    if (isDemoMode) {
-      setSavingsEntries(prev => [...prev, { id: `demo-new-${Date.now()}`, name: entry.name, amount: entry.amount, category: entry.category, frequency: freq, isSavings: true, year: year ?? null, start_month: null }])
-      return
-    }
+    const tempId = `temp-${Date.now()}`
+    const optimistic = { id: tempId, name: entry.name, amount: entry.amount, category: entry.category, frequency: freq, isSavings: true, year: year ?? null, start_month: null }
+    setSavingsEntries(prev => [...prev, optimistic])
+    if (isDemoMode) return
     const base = { user_id: user.id, name: entry.name, amount: entry.amount, category: entry.category }
     let { data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: true, year }).select().single()
     if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq, is_savings: true }).select().single())
@@ -3822,7 +4148,10 @@ export default function App() {
       if (year && !data.year) {
         await supabase.from('fixed_costs').update({ year }).eq('id', data.id).eq('user_id', user.id)
       }
-      setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: freq, isSavings: true, year: data.year ?? year ?? null }])
+      saveFreqCache(data.id, freq)
+      setSavingsEntries(prev => prev.map(e => e.id === tempId ? { ...e, id: data.id, year: data.year ?? year ?? null } : e))
+    } else {
+      setSavingsEntries(prev => prev.filter(e => e.id !== tempId))
     }
   }
 
@@ -3841,15 +4170,17 @@ export default function App() {
       if (error) ({ data, error } = await supabase.from('fixed_costs').insert({ ...base, frequency: freq }).select().single())
       if (error) ({ data, error } = await supabase.from('fixed_costs').insert(base).select().single())
       if (!error && data) {
+        saveFreqCache(data.id, freq)
         setSavingsEntries(prev => [...prev, { id: data.id, name: data.name, amount: data.amount, category: data.category, frequency: data.frequency ?? freq, isSavings: true, year: data.year ?? current.year ?? null, start_month: data.start_month ?? monthInt }])
       }
     } else {
+      if ('frequency' in changes) saveFreqCache(id, changes.frequency)
       setSavingsEntries(prev => prev.map(e => e.id === id ? { ...e, ...changes } : e))
       if (!isDemoMode) {
         const { error } = await supabase.from('fixed_costs').update(changes).eq('id', id).eq('user_id', user.id)
         if (error) {
           const { frequency: _f, ...rest } = changes
-          await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
+          if (Object.keys(rest).length > 0) await supabase.from('fixed_costs').update(rest).eq('id', id).eq('user_id', user.id)
         }
       }
     }
@@ -3857,7 +4188,11 @@ export default function App() {
 
   async function deleteSavingsEntry(id) {
     setSavingsEntries(prev => prev.filter(e => e.id !== id))
-    if (!isDemoMode) await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
+    removeFreqCache(id)
+    if (!isDemoMode) {
+      const { error } = await supabase.from('fixed_costs').delete().eq('id', id).eq('user_id', user.id)
+      if (error) console.error('[budgr] deleteSavingsEntry failed:', error.message)
+    }
   }
 
   async function setCategory(id, category) {
@@ -3878,7 +4213,8 @@ export default function App() {
     ))
 
     // Supabase: update the manually tagged row
-    if (!isDemoMode) supabase.from('transactions').update({ category }).eq('id', id).eq('user_id', user.id).then()
+    if (!isDemoMode) supabase.from('transactions').update({ category }).eq('id', id).eq('user_id', user.id)
+      .then(({ error }) => { if (error) console.error('[budgr] setCategory failed:', error.message) })
 
     // Supabase: batch update similar untagged rows
     if (similar.length > 0) {
@@ -3887,7 +4223,7 @@ export default function App() {
           .update({ category, from_memory: true })
           .in('id', similar.map(tx => tx.id))
           .eq('user_id', user.id)
-          .then()
+          .then(({ error }) => { if (error) console.error('[budgr] batchSetCategory failed:', error.message) })
       }
 
       clearTimeout(setCategory._timer)
@@ -3929,7 +4265,7 @@ export default function App() {
         .update({ category, from_memory: true })
         .in('id', ids)
         .eq('user_id', user.id)
-        .then()
+        .then(({ error }) => { if (error) console.error('[budgr] fuzzyAccept failed:', error.message) })
     }
     setFuzzyPrompt(null)
     clearTimeout(setCategory._timer)
@@ -3944,7 +4280,10 @@ export default function App() {
   async function handleDeleteUpload(upload) {
     const ids = upload.txnIds || []
     if (ids.length > 0) {
-      if (!isDemoMode) await supabase.from('transactions').delete().in('id', ids).eq('user_id', user.id)
+      if (!isDemoMode) {
+        const { error } = await supabase.from('transactions').delete().in('id', ids).eq('user_id', user.id)
+        if (error) console.error('[budgr] handleDeleteUpload failed:', error.message)
+      }
       setTransactions(prev => prev.filter(t => !ids.includes(t.id)))
       // Remove deleted transaction dedup keys so they can be re-imported if needed
       setDedupKeyCache(prev => {
@@ -3983,178 +4322,217 @@ export default function App() {
     setCustomTags(prev => prev.filter(t => t.category !== category))
   }
 
-  function parseCSV(text) {
-    const cleaned = text.replace(/^﻿/, '')
-    const lines   = cleaned.trim().split(/\r?\n/)
-    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase())
 
-    const dateIdx   = headers.findIndex(h => h.includes('date'))
-    const descIdx   = headers.findIndex(h => h.includes('description 1'))
-    const amountIdx = headers.findIndex(h => h.includes('cad'))
+  // Stage 1: parse, deduplicate, and categorise — stops before inserting.
+  // Shared dedup + category-fallback logic used by both handleFile and handleManualMapping.
+  // Takes already-parsed rows with category_memory applied, deduplicates against cache and DB,
+  // and calls setPendingImport so the preview modal can display the results.
+  async function prepareAndPreview(incoming, format, filename) {
+    // Stage 1 — fast dedup via in-memory cache
+    const passedCache = incoming.filter(t => !dedupKeyCache.has(dedupKey(t)))
 
-    return lines.slice(1).flatMap((line, i) => {
-      const cols = []
-      let cur = '', inQuote = false
-      for (const ch of line) {
-        if (ch === '"') { inQuote = !inQuote }
-        else if (ch === ',' && !inQuote) { cols.push(cur.trim()); cur = '' }
-        else { cur += ch }
+    // Stage 2 — authoritative Supabase dedup; also fetches existing categories for fallback
+    let fresh      = passedCache
+    let dbExisting = []
+    if (passedCache.length > 0) {
+      const dates = [...new Set(passedCache.map(t => t.date))]
+      const { data } = await supabase
+        .from('transactions')
+        .select('date, amount, description, category')
+        .eq('user_id', user.id)
+        .in('date', dates)
+      dbExisting = data || []
+      const dbKeys = new Set(
+        dbExisting.map(r => `${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
+      )
+      fresh = passedCache.filter(t => !dbKeys.has(dedupKey(t)))
+    }
+
+    const skipped = incoming.length - fresh.length
+
+    // All dupes — record the attempt, update cache, and bail (no preview needed)
+    if (fresh.length === 0) {
+      const allDupesUpload = { id: Date.now(), filename, total_count: incoming.length, new_count: 0, uploaded_at: new Date().toISOString() }
+      setCsvUploads(prev => {
+        const next = [allDupesUpload, ...prev]
+        localStorage.setItem(`csvUploads_${user.id}`, JSON.stringify(next))
+        return next
+      })
+      if (dbExisting.length > 0) {
+        const nextCache = new Set(dedupKeyCache)
+        dbExisting.forEach(r =>
+          nextCache.add(`${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
+        )
+        setDedupKeyCache(nextCache)
       }
-      cols.push(cur.trim())
+      setToast({ msg: `No new transactions — all ${skipped} already existed` })
+      clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = setTimeout(() => setToast(null), 4000)
+      return
+    }
 
-      const rawAmount = parseFloat(cols[amountIdx]) || 0
-      if (rawAmount === 0) return []
-      const description = cols[descIdx] || ''
-      const type = rawAmount > 0 ? 'credit' : 'debit'
-      let category
-      if (type === 'debit') {
-        category = guessCategory(description)
-      } else {
-        const upper = description.toUpperCase()
-        category = CC_PAYMENT_KEYWORDS.some(k => upper.includes(k)) ? 'Credit Card Payment' : 'Refund / Return'
-      }
-      return [{ id: Date.now() + i, date: normalizeDate(cols[dateIdx] || ''), description, amount: Math.abs(rawAmount), type, category }]
+    // Build description→category fallback from the DB rows we already fetched
+    const catByDesc = {}
+    dbExisting.forEach(r => {
+      if (r.category) catByDesc[r.description.toUpperCase().trim()] = r.category
     })
+
+    // For fresh rows still missing a category, query DB across all dates by description
+    const untaggedDescs = [...new Set(fresh.filter(t => !t.category).map(t => t.description))]
+    if (untaggedDescs.length > 0) {
+      const { data: catRows } = await supabase
+        .from('transactions')
+        .select('description, category')
+        .eq('user_id', user.id)
+        .not('category', 'is', null)
+        .in('description', untaggedDescs.slice(0, 100))
+      if (catRows) {
+        catRows.forEach(r => {
+          const key = r.description.toUpperCase().trim()
+          if (!catByDesc[key]) catByDesc[key] = r.category
+        })
+      }
+    }
+
+    // Apply fallback — never leave a row untagged if any source has a category
+    const readyToInsert = fresh.map(t => {
+      if (t.category) return t
+      const fallback = catByDesc[t.description.toUpperCase().trim()]
+      return fallback ? { ...t, category: fallback, fromMemory: true } : t
+    })
+
+    // Show preview — Supabase insert is deferred until the user confirms
+    setPendingImport({ format, filename, skipped, totalParsed: incoming.length, readyToInsert, dbExisting })
   }
 
+  // Stage 1: read the file, detect format, dedup, and set pendingImport for the preview modal.
   function handleFile(file) {
+    console.log('[MAPPER DEBUG] handleFile reached', file.name, file.size)
     if (isDemoMode) { setToast({ msg: 'CSV import is disabled in Demo Mode' }); setTimeout(() => setToast(null), 3000); return }
     const reader = new FileReader()
     reader.onload = async e => {
-      // 1. Parse + apply category_memory to all incoming rows
-      const incoming = parseCSV(e.target.result).map(t => {
+      const text           = e.target.result
+      const detectedFormat = detectFormat(text)
+      console.log('[MAPPER DEBUG] detectedFormat', detectedFormat)
+
+      // Unknown format — open the manual column mapper instead of erroring
+      if (detectedFormat === 'unknown') {
+        console.log('[MAPPER DEBUG] entering unknown CSV branch')
+        const mapperData = parseForMapper(text)
+        console.log('[MAPPER DEBUG] parseForMapper result', mapperData)
+        console.log('[MAPPER DEBUG] setting pendingMapper')
+        setPendingMapper({ ...mapperData, filename: file.name })
+        console.log('[MAPPER DEBUG] pendingMapper after set requested')
+        return
+      }
+
+      // Parse and apply category_memory to all incoming rows
+      const incoming = parseCSV(text).map(t => {
         const descKey    = t.description.toUpperCase().trim()
         const remembered = categoryMemory[descKey]
         return { ...t, category: remembered || t.category || '', fromMemory: !!remembered }
       })
-      if (incoming.length === 0) return
-
-      // 2. Stage 1 — fast dedup via in-memory cache
-      const passedCache = incoming.filter(t => !dedupKeyCache.has(dedupKey(t)))
-
-      // 3. Stage 2 — authoritative Supabase dedup; also fetch existing categories for fallback
-      let fresh      = passedCache
-      let dbExisting = []
-      if (passedCache.length > 0) {
-        const dates = [...new Set(passedCache.map(t => t.date))]
-        const { data } = await supabase
-          .from('transactions')
-          .select('date, amount, description, category')
-          .eq('user_id', user.id)
-          .in('date', dates)
-        dbExisting = data || []
-        const dbKeys = new Set(
-          dbExisting.map(r => `${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
-        )
-        fresh = passedCache.filter(t => !dbKeys.has(dedupKey(t)))
-      }
-
-      const skipped = incoming.length - fresh.length
-
-      // Always record the upload attempt (even if all dupes)
-      const newUpload = { id: Date.now(), filename: file.name, total_count: incoming.length, new_count: fresh.length, uploaded_at: new Date().toISOString() }
-      setCsvUploads(prev => {
-        const next = [newUpload, ...prev]
-        localStorage.setItem(`csvUploads_${user.id}`, JSON.stringify(next))
-        return next
-      })
-
-      // All dupes — patch cache and bail
-      if (fresh.length === 0) {
-        if (dbExisting.length > 0) {
-          const nextCache = new Set(dedupKeyCache)
-          dbExisting.forEach(r =>
-            nextCache.add(`${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
-          )
-          setDedupKeyCache(nextCache)
-        }
-        setToast({ msg: `No new transactions — all ${skipped} already existed` })
-        clearTimeout(handleFile._toastTimer)
-        handleFile._toastTimer = setTimeout(() => setToast(null), 4000)
+      if (incoming.length === 0) {
+        console.log('[MAPPER DEBUG] unreadable CSV toast triggered from: handleFile — incoming.length === 0 after parseCSV (format was', detectedFormat, ')')
+        setToast({ msg: 'Budgli could not read this CSV. Please check the file format.' })
+        clearTimeout(toastTimerRef.current)
+        toastTimerRef.current = setTimeout(() => setToast(null), 5000)
         return
       }
 
-      // 4. Build description→category fallback from the DB rows we already fetched
-      const catByDesc = {}
-      dbExisting.forEach(r => {
-        if (r.category) catByDesc[r.description.toUpperCase().trim()] = r.category
-      })
-
-      // 4b. For fresh rows still missing a category, query DB across all dates by description
-      const untaggedDescs = [...new Set(fresh.filter(t => !t.category).map(t => t.description))]
-      if (untaggedDescs.length > 0) {
-        const { data: catRows } = await supabase
-          .from('transactions')
-          .select('description, category')
-          .eq('user_id', user.id)
-          .not('category', 'is', null)
-          .in('description', untaggedDescs.slice(0, 100))
-        if (catRows) {
-          catRows.forEach(r => {
-            const key = r.description.toUpperCase().trim()
-            if (!catByDesc[key]) catByDesc[key] = r.category
-          })
-        }
-      }
-
-      // 5. Apply fallback — never leave a row untagged if any source has a category
-      const readyToInsert = fresh.map(t => {
-        if (t.category) return t
-        const fallback = catByDesc[t.description.toUpperCase().trim()]
-        return fallback ? { ...t, category: fallback, fromMemory: true } : t
-      })
-
-      const autoTagged = readyToInsert.filter(t => t.category).length
-
-      // 6. Insert
-      const { data: inserted, error } = await supabase
-        .from('transactions')
-        .insert(readyToInsert.map(t => ({
-          user_id:     user.id,
-          date:        t.date,
-          description: t.description,
-          amount:      t.amount,
-          type:        t.type,
-          category:    t.category || null,
-          from_memory: t.fromMemory || false,
-        })))
-        .select()
-      if (error) { console.error('[import] insert failed:', error); return }
-
-      // 7. Summary toast
-      setToast({ msg: `${fresh.length} new transaction${fresh.length !== 1 ? 's' : ''} imported, ${autoTagged} auto-tagged, ${skipped} already existed` })
-      clearTimeout(handleFile._toastTimer)
-      handleFile._toastTimer = setTimeout(() => setToast(null), 5000)
-
-      const insertedTxns = inserted.map(r => ({
-        id: r.id, date: r.date, description: r.description,
-        amount: r.amount, type: r.type, category: r.category ?? '',
-        fromMemory: r.from_memory ?? false,
-      }))
-
-      // Backfill txnIds into the upload record so cascading delete knows which rows to remove
-      const insertedIds = insertedTxns.map(t => t.id)
-      setCsvUploads(prev => {
-        const next = prev.map(u => u.id === newUpload.id ? { ...u, txnIds: insertedIds } : u)
-        localStorage.setItem(`csvUploads_${user.id}`, JSON.stringify(next))
-        return next
-      })
-
-      // Update cache: merge DB-discovered existing keys + newly inserted keys
-      const nextCache = new Set(dedupKeyCache)
-      dbExisting.forEach(r =>
-        nextCache.add(`${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
-      )
-      insertedTxns.forEach(t => nextCache.add(dedupKey(t)))
-      setDedupKeyCache(nextCache)
-
-      setTransactions(prev => {
-        const merged = [...insertedTxns, ...prev]
-        merged.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
-        return merged
-      })
+      await prepareAndPreview(incoming, detectedFormat, file.name)
     }
     reader.readAsText(file)
+  }
+
+  // Called by CsvColumnMapper when the user confirms their column mapping.
+  // Normalizes the raw lines, applies category_memory, then deduplicates and shows the preview.
+  async function handleManualMapping(mapping) {
+    if (!pendingMapper) return
+    const { lines, filename } = pendingMapper
+    const raw    = normalizeWithMapping(lines, mapping)
+    const parsed = raw.map(t => {
+      const descKey    = t.description.toUpperCase().trim()
+      const remembered = categoryMemory[descKey]
+      return { ...t, category: remembered || t.category || '', fromMemory: !!remembered }
+    })
+    setPendingMapper(null)
+    if (parsed.length === 0) {
+      setToast({ msg: 'No valid transactions found with these column settings.' })
+      clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = setTimeout(() => setToast(null), 5000)
+      return
+    }
+    await prepareAndPreview(parsed, 'unknown', filename)
+  }
+
+  // Stage 2: insert the previewed transactions after the user confirms.
+  async function confirmImport() {
+    if (!pendingImport) return
+    const { readyToInsert, dbExisting, skipped, filename, totalParsed } = pendingImport
+    setImporting(true)
+
+    const newUpload = { id: Date.now(), filename, total_count: totalParsed, new_count: readyToInsert.length, uploaded_at: new Date().toISOString() }
+    setCsvUploads(prev => {
+      const next = [newUpload, ...prev]
+      localStorage.setItem(`csvUploads_${user.id}`, JSON.stringify(next))
+      return next
+    })
+
+    const { data: inserted, error } = await supabase
+      .from('transactions')
+      .insert(readyToInsert.map(t => ({
+        user_id:     user.id,
+        date:        t.date,
+        description: t.description,
+        amount:      t.amount,
+        type:        t.type,
+        category:    t.category || null,
+        from_memory: t.fromMemory || false,
+      })))
+      .select()
+
+    if (error) {
+      console.error('[import] insert failed:', error)
+      setImporting(false)
+      return
+    }
+
+    track('account_added', { rows: readyToInsert.length })
+
+    const autoTagged = readyToInsert.filter(t => t.category).length
+    setToast({ msg: `${readyToInsert.length} new transaction${readyToInsert.length !== 1 ? 's' : ''} imported, ${autoTagged} auto-tagged, ${skipped} already existed` })
+    clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000)
+
+    const insertedTxns = inserted.map(r => ({
+      id: r.id, date: r.date, description: r.description,
+      amount: r.amount, type: r.type, category: r.category ?? '',
+      fromMemory: r.from_memory ?? false,
+    }))
+
+    const insertedIds = insertedTxns.map(t => t.id)
+    setCsvUploads(prev => {
+      const next = prev.map(u => u.id === newUpload.id ? { ...u, txnIds: insertedIds } : u)
+      localStorage.setItem(`csvUploads_${user.id}`, JSON.stringify(next))
+      return next
+    })
+
+    const nextCache = new Set(dedupKeyCache)
+    dbExisting.forEach(r =>
+      nextCache.add(`${r.date}|${r.amount}|${r.description.toUpperCase().trim()}`)
+    )
+    insertedTxns.forEach(t => nextCache.add(dedupKey(t)))
+    setDedupKeyCache(nextCache)
+
+    setTransactions(prev => {
+      const merged = [...insertedTxns, ...prev]
+      merged.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
+      return merged
+    })
+
+    setImporting(false)
+    setPendingImport(null)
   }
 
   function handleDrop(e) {
@@ -4170,42 +4548,87 @@ export default function App() {
     e.target.value = ''
   }
 
-  function handleSalaryChange(next) {
+  async function persistSalary(next, yearForSave) {
+    if (isDemoMode || !user) return true
+    const yearInt = parseInt(yearForSave, 10)
+    const yearVal = isNaN(yearInt) ? null : yearInt
+    const fields = {
+      gross_salary:       next.gross,
+      tax_rate:           next.taxRate,
+      monthly_deductions: next.deductions,
+      extra_income:       next.extraIncome ?? 0,
+    }
+
+    // Attempt UPDATE of the existing row for this user + year.
+    // Using update-then-insert avoids relying on a DB unique constraint.
+    let updateQ = supabase.from('salary_settings').update(fields).eq('user_id', user.id)
+    updateQ = yearVal === null ? updateQ.is('year', null) : updateQ.eq('year', yearVal)
+    const { data: updated, error: updateErr } = await updateQ.select()
+
+    if (updateErr) {
+      console.error('[budgr] salary update failed:', updateErr.message)
+      return false
+    }
+    if (updated && updated.length > 0) {
+      console.log('[budgr] salary updated:', updated)
+      return true
+    }
+
+    // No existing row for this year — insert a new one
+    const insertPayload = { user_id: user.id, ...fields }
+    if (yearVal !== null) insertPayload.year = yearVal
+    const { error: insertErr } = await supabase.from('salary_settings').insert(insertPayload)
+    if (insertErr) {
+      console.error('[budgr] salary insert failed:', insertErr.message)
+      return false
+    }
+    console.log('[budgr] salary inserted for year:', yearVal)
+    return true
+  }
+
+  function handleSalaryChange(next, { immediate = false } = {}) {
     const yearForSave = selectedYear
     setSalaries(prev => ({ ...prev, [yearForSave]: next }))
+    pendingSalaryRef.current = { next, yearForSave }
+
+    // Persist to localStorage immediately so a page refresh never loses the value
+    if (!isDemoMode && user) {
+      try {
+        const lsKey = `budgr_salary_${user.id}`
+        const existing = JSON.parse(localStorage.getItem(lsKey) || '{}')
+        existing[yearForSave] = { ...next, _ts: Date.now() }
+        localStorage.setItem(lsKey, JSON.stringify(existing))
+      } catch {}
+    }
+
     if (isDemoMode) return
     clearTimeout(salaryTimerRef.current)
-    salaryTimerRef.current = setTimeout(async () => {
-      const yearPayload = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0, year: yearForSave }
-      const basePayload = { gross_salary: next.gross, tax_rate: next.taxRate, monthly_deductions: next.deductions, extra_income: next.extraIncome ?? 0 }
+    if (immediate) {
+      pendingSalaryRef.current = null
+      persistSalary(next, yearForSave)
+    } else {
+      salaryTimerRef.current = setTimeout(() => {
+        pendingSalaryRef.current = null
+        persistSalary(next, yearForSave)
+      }, 600)
+    }
+  }
 
-      // Fetch all rows for this user, then do year lookup in JS to avoid PostgREST issues with 'year' as a filter
-      const { data: allRows, error: fetchErr } = await supabase
-        .from('salary_settings').select('*').eq('user_id', user.id)
+  function handleSalaryBlur() {
+    clearTimeout(salaryTimerRef.current)
+    const pending = pendingSalaryRef.current
+    if (pending) {
+      pendingSalaryRef.current = null
+      persistSalary(pending.next, pending.yearForSave)
+    }
+  }
 
-      if (fetchErr) { console.error('[budgr] salary save failed:', fetchErr); return }
-
-      const existingRow = allRows?.find(r => r.year === yearForSave)
-      const anyRow      = allRows?.[0]
-
-      let error
-      if (existingRow) {
-        // Update the year-specific row by id
-        ;({ error } = await supabase.from('salary_settings').update(yearPayload).eq('id', existingRow.id))
-      } else if (anyRow) {
-        // No year-specific row — try insert first, fall back to updating existing row
-        ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...yearPayload }))
-        if (error) {
-          error = null
-          ;({ error } = await supabase.from('salary_settings').update(yearPayload).eq('id', anyRow.id))
-        }
-      } else {
-        // No rows at all — insert fresh
-        ;({ error } = await supabase.from('salary_settings').insert({ user_id: user.id, ...basePayload }))
-      }
-
-      if (error) console.error('[budgr] salary save failed:', error)
-    }, 600)
+  // Explicit save triggered by the Save Income button — cancels any pending
+  // debounce and immediately persists to Supabase, returning success/failure.
+  async function handleSaveSalary(next) {
+    clearTimeout(salaryTimerRef.current)
+    pendingSalaryRef.current = null
+    return persistSalary(next, selectedYear)
   }
 
   const salary             = salaries[selectedYear] ?? salaries['global'] ?? { gross: 0, taxRate: 30, deductions: 0, extraIncome: 0 }
@@ -4217,15 +4640,15 @@ export default function App() {
 
   const PAGE_TITLES = {
     'get-started': 'Get Started',
-    dashboard:    `${selectedMonthLabel} ${selectedYear} — Transactions`,
+    dashboard:    `${selectedMonthLabel} ${selectedYear}`,
     transactions: 'All Transactions',
-    salary:       'Salary',
+    salary:       'Income',
     fixed:        'Fixed Costs',
     savings:           'Savings',
     'savings-forecast': 'Savings Forecast',
     categories:   'Categories',
     annual:           'Annual Summary',
-    'year-comparison': 'Year Comparison',
+    'year-comparison': 'Year-over-Year Review',
     settings:          'Settings',
     privacy:           'Privacy',
   }
@@ -4233,75 +4656,224 @@ export default function App() {
   if (user === undefined || loading) return <LoadingSpinner />
   if (user === null) return <AuthScreen />
 
+  // Sidebar savings rate — recomputed from current month state, no extra API call
+  const sidebarSavingsRate = (() => {
+    if (annualNet <= 0 || transactions.length === 0) return null
+    const ym = selectedYear + '-' + selectedMonth
+    const monthTxns = transactions.filter(t => yearMonthOf(t.date) === ym)
+    if (monthTxns.length === 0) return null
+    const debits = monthTxns.filter(t => parseFloat(t.amount) > 0 && !EXCLUDE_FROM_TOTALS.has(t.category))
+    const txnSpent = debits.reduce((s, t) => s + parseFloat(t.amount), 0)
+    const activeFixed = getActiveForMonth(fixedCosts, selectedYear, selectedMonth)
+    const activeSavings = getActiveForMonth(savingsEntries, selectedYear, selectedMonth)
+    const fixedTotal = activeFixed.reduce((s, c) => s + monthlyRate(c), 0)
+    const savingsTotal = activeSavings.reduce((s, e) => s + monthlyRate(e), 0)
+    const monthlyNet = annualNet / 12
+    const leftover = Math.max(0, monthlyNet - txnSpent - fixedTotal)
+    const totalSaved = leftover + savingsTotal
+    return monthlyNet > 0 ? (totalSaved / monthlyNet) * 100 : null
+  })()
+
   return (
     <div
-      className="flex h-screen bg-gray-200 font-sans"
+      className="flex h-screen bg-[#F7F8FA] font-sans"
       onDrop={handleDrop}
       onDragOver={e => { e.preventDefault(); setDragging(true) }}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false) }}
     >
 
+      {/* Goal-based onboarding overlay */}
+      {showGoalOnboarding && !isDemoMode && (
+        <GoalOnboarding onComplete={saveUserGoals} onSkip={handleGoalSkip} />
+      )}
+
+      {/* CSV column mapper — shown when format is unknown, feeds into preview */}
+      {pendingMapper && (
+        <CsvColumnMapper
+          pendingMapper={pendingMapper}
+          onMap={handleManualMapping}
+          onCancel={() => setPendingMapper(null)}
+        />
+      )}
+
+      {/* CSV import preview — shown after parsing, before Supabase insert */}
+      {pendingImport && (
+        <CsvImportPreview
+          pendingImport={pendingImport}
+          onConfirm={confirmImport}
+          onCancel={() => setPendingImport(null)}
+          importing={importing}
+          selectedYear={selectedYear}
+          selectedMonth={selectedMonth}
+        />
+      )}
+
       {/* Global drag overlay */}
       {dragging && (
-        <div className="fixed inset-0 z-50 bg-teal-500/10 border-4 border-dashed border-[#0D7377] m-3 rounded-2xl pointer-events-none flex items-center justify-center">
-          <p className="text-[#0D7377] font-semibold text-lg">Drop CSV to import</p>
+        <div className="fixed inset-0 z-50 bg-[#00C896]/10 border-4 border-dashed border-[#00C896] m-3 rounded-2xl pointer-events-none flex items-center justify-center">
+          <p className="text-[#00C896] font-semibold text-lg">Drop CSV to import</p>
         </div>
       )}
 
-      {/* ── Sidebar ── */}
-      <aside className="w-56 bg-[#1A1A2E] flex flex-col shrink-0">
-        <div className="px-5 py-5 border-b border-white/10">
-          <p className="text-white font-semibold text-base">Budgr</p>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-gray-500 shrink-0" />
-            <p className="text-white/40 text-xs">CSV only</p>
+      {/* ── Mobile nav overlay ── */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileNavOpen(false)} />
+          <aside className="relative w-72 max-w-[85vw] bg-[#0F1E33] flex flex-col h-full shadow-2xl">
+            <div className="px-5 py-5 border-b border-white/[0.07] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg,#00C896,#0D9488)' }}>
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2.2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <span className="text-white font-bold text-base tracking-tight">budgli</span>
+              </div>
+              <button onClick={() => setMobileNavOpen(false)} className="text-white/40 hover:text-white/80 p-1">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <nav className="flex-1 py-4 overflow-y-auto flex flex-col nav-scroll">
+              <div className="flex-1">
+                {NAV_SECTIONS.map(section => (
+                  <div key={section.heading} className="mb-5">
+                    <p className="px-5 mb-1 text-[11px] font-semibold text-white/35 tracking-[0.12em] uppercase">{section.heading}</p>
+                    {section.items.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => { setActivePage(item.id); setMobileNavOpen(false) }}
+                        className={`w-full text-left px-3.5 py-2.5 mx-1 rounded-lg text-sm transition-all flex items-center gap-2.5 w-[calc(100%-8px)]
+                          ${activePage === item.id ? 'bg-[#00C896]/15 text-[#00C896]' : 'text-white/45 hover:bg-white/[0.05] hover:text-white/75'}`}
+                      >
+                        <svg className={`w-4 h-4 shrink-0 ${activePage === item.id ? 'text-[#00C896] opacity-100' : 'opacity-40'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                        </svg>
+                        <span className={activePage === item.id ? 'font-semibold' : ''}>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+                  {/* Divider + footer nav items */}
+              <div className="border-t border-white/[0.08] pt-1 pb-1">
+                {NAV_FOOTER_ITEMS.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => { setActivePage(item.id); setMobileNavOpen(false) }}
+                    className={`w-full text-left px-3.5 py-2.5 mx-1 rounded-lg text-sm transition-all flex items-center gap-2.5 w-[calc(100%-8px)]
+                      ${activePage === item.id ? 'bg-[#00C896]/15 text-[#00C896]' : 'text-white/45 hover:bg-white/[0.05] hover:text-white/75'}`}
+                  >
+                    <svg className={`w-4 h-4 shrink-0 ${activePage === item.id ? 'text-[#00C896] opacity-100' : 'opacity-40'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                    </svg>
+                    <span className={activePage === item.id ? 'font-semibold' : ''}>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </nav>
+            <div className="px-4 py-4 border-t border-white/[0.14]">
+              <div className="flex items-center gap-2.5 mb-3 min-w-0">
+                <div className="w-6 h-6 rounded-full bg-[#00C896]/60 flex items-center justify-center shrink-0">
+                  <span className="text-[10px] font-bold text-white">{(user.email?.[0] || '?').toUpperCase()}</span>
+                </div>
+                <span className="text-xs text-white/40 truncate flex-1 min-w-0">{user.email}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={() => supabase.auth.signOut()} className="text-[11px] text-white/30 hover:text-white/60 transition-colors">Sign out</button>
+                <span className="text-white/15 text-xs">·</span>
+                <button onClick={() => { setActivePage('privacy'); setMobileNavOpen(false) }} className="text-[11px] text-white/30 hover:text-white/60 transition-colors">Privacy</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* ── Sidebar (desktop only) ── */}
+      <aside className="hidden md:flex w-56 bg-[#0F1E33] flex-col shrink-0">
+        <div className="px-5 py-5 border-b border-white/[0.07]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg,#00C896,#0D9488)' }}>
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2.2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <span className="text-white font-bold text-base tracking-tight">budgli</span>
           </div>
         </div>
 
-        <nav className="flex-1 py-3 overflow-y-auto">
-          {NAV_SECTIONS.map(section => (
-            <div key={section.heading} className="mb-5">
-              <p className="px-5 mb-1 text-[10px] font-semibold text-white/30 tracking-widest uppercase">
-                {section.heading}
-              </p>
-              {section.items.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => setActivePage(item.id)}
-                  className={`w-full text-left px-5 py-2 text-sm transition-colors flex items-center gap-3
-                    ${activePage === item.id
-                      ? 'bg-white/10 text-white border-l-2 border-[#14A085]'
-                      : 'text-white/60 hover:bg-white/5 hover:text-white border-l-2 border-transparent'
-                    }`}
-                >
-                  <svg className="w-4 h-4 shrink-0 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
-                  </svg>
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          ))}
+        <nav className="flex-1 py-4 overflow-y-auto flex flex-col nav-scroll">
+          <div className="flex-1">
+            {NAV_SECTIONS.map(section => (
+              <div key={section.heading} className="mb-5">
+                <p className="px-5 mb-1 text-[11px] font-semibold text-white/35 tracking-[0.12em] uppercase">
+                  {section.heading}
+                </p>
+                {section.items.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setActivePage(item.id)}
+                    className={`w-full text-left px-3.5 py-2 mx-1 rounded-lg text-sm transition-all flex items-center gap-2.5 w-[calc(100%-8px)]
+                      ${activePage === item.id
+                        ? 'bg-[#00C896]/15 text-[#00C896]'
+                        : 'text-white/45 hover:bg-white/[0.05] hover:text-white/75'
+                      }`}
+                  >
+                    <svg className={`w-4 h-4 shrink-0 ${activePage === item.id ? 'text-[#00C896] opacity-100' : 'opacity-40'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                    </svg>
+                    <span className={activePage === item.id ? 'font-semibold' : ''}>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Divider + footer nav items */}
+          <div className="border-t border-white/[0.08] pt-1 pb-1">
+            {NAV_FOOTER_ITEMS.map(item => (
+              <button
+                key={item.id}
+                onClick={() => setActivePage(item.id)}
+                className={`w-full text-left px-3.5 py-2 mx-1 rounded-lg text-sm transition-all flex items-center gap-2.5 w-[calc(100%-8px)]
+                  ${activePage === item.id
+                    ? 'bg-[#00C896]/15 text-[#00C896]'
+                    : 'text-white/45 hover:bg-white/[0.05] hover:text-white/75'
+                  }`}
+              >
+                <svg className={`w-4 h-4 shrink-0 ${activePage === item.id ? 'text-[#00C896] opacity-100' : 'opacity-40'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                </svg>
+                <span className={activePage === item.id ? 'font-semibold' : ''}>{item.label}</span>
+              </button>
+            ))}
+          </div>
         </nav>
 
-        <div className="px-5 py-4 border-t border-white/10 space-y-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+        <div className="px-4 py-4 border-t border-white/[0.14]">
+          <div className="flex items-center gap-2.5 mb-3 min-w-0">
+            <div className="w-6 h-6 rounded-full bg-[#00C896]/60 flex items-center justify-center shrink-0">
+              <span className="text-[10px] font-bold text-white">{(user.email?.[0] || '?').toUpperCase()}</span>
+            </div>
             <span className="text-xs text-white/40 truncate flex-1 min-w-0">{user.email}</span>
+          </div>
+          <div className="flex items-center gap-3">
             <button
               onClick={() => supabase.auth.signOut()}
-              className="text-[10px] text-white/30 hover:text-white/70 transition-colors shrink-0 ml-1"
-              title="Sign out"
+              className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
             >
               Sign out
             </button>
+            <span className="text-white/15 text-xs">·</span>
+            <button
+              onClick={() => setActivePage('privacy')}
+              className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
+            >
+              Privacy
+            </button>
           </div>
-          <button
-            onClick={() => setActivePage('privacy')}
-            className="text-xs text-white/50 hover:text-white/90 transition-colors underline underline-offset-2"
-          >
-            Privacy
-          </button>
         </div>
       </aside>
 
@@ -4322,24 +4894,43 @@ export default function App() {
         )}
 
         {/* Top bar */}
-        <header className="bg-white border-b border-gray-200 px-6 flex items-center justify-between py-4 shrink-0">
-          <h1 className="text-2xl font-bold text-gray-900">{PAGE_TITLES[activePage] || ''}</h1>
-          <div className="flex items-center gap-3">
+        <header className="bg-white border-b border-gray-200 px-4 md:px-6 flex items-center justify-between py-3 md:py-4 shrink-0 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Hamburger — mobile only */}
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="md:hidden p-1.5 -ml-1 text-gray-500 hover:text-gray-800 shrink-0"
+              aria-label="Open navigation"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <h1 className="text-lg md:text-2xl font-bold text-gray-900 truncate">{PAGE_TITLES[activePage] || ''}</h1>
+          </div>
+          <div className="flex items-center gap-2 md:gap-3 shrink-0">
             {availableYears.length > 1 && activePage !== 'year-comparison' && (
-              <div className="flex items-center gap-1.5">
-                {availableYears.map(y => (
-                  <button
-                    key={y}
-                    onClick={() => setSelectedYear(y)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
-                      y === selectedYear ? 'bg-[#0D7377] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >{y}</button>
-                ))}
+              <div className="hidden sm:flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-400">Year:</span>
+                <div className="flex items-center gap-1">
+                  {availableYears.map(y => (
+                    <button
+                      key={y}
+                      onClick={() => setSelectedYear(y)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                        y === selectedYear ? 'bg-[#00C896] text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                      }`}
+                    >{y}</button>
+                  ))}
+                </div>
               </div>
             )}
-            <label className="cursor-pointer border border-gray-300 text-gray-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
-              Import CSV
+            <label className="cursor-pointer flex items-center gap-1.5 border border-gray-300 text-gray-600 text-sm font-medium px-3 py-2 md:px-4 rounded-lg hover:bg-gray-50 transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              <span className="hidden sm:inline">Import CSV</span>
+              <span className="sm:hidden">Import</span>
               <input type="file" accept=".csv" className="hidden" onChange={handleFileInput} />
             </label>
           </div>
@@ -4348,7 +4939,7 @@ export default function App() {
         {/* Toast */}
         {toast && (
           <div className="shrink-0 mx-6 mt-3">
-            <div className="flex items-center gap-2 bg-[#0F3460] text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow">
+            <div className="flex items-center gap-2 bg-[#1A1F2E] text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow-md">
               <span>{toast.msg}</span>
               <button onClick={() => setToast(null)} className="ml-auto text-white/60 hover:text-white leading-none">✕</button>
             </div>
@@ -4357,15 +4948,15 @@ export default function App() {
 
         {/* Month tabs — dashboard only */}
         {activePage === 'dashboard' && (
-          <div className="bg-white border-b border-gray-100 px-6 flex gap-4 shrink-0">
+          <div className="bg-white border-b border-gray-100 px-4 md:px-6 flex gap-1 md:gap-4 shrink-0 overflow-x-auto no-scrollbar">
             {MONTHS.map(m => (
               <button
                 key={m.id}
                 onClick={() => setSelectedMonth(m.id)}
-                className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-3 px-1 md:px-0 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap shrink-0 ${
                   selectedMonth === m.id
-                    ? 'border-[#0D7377] text-[#0D7377]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                    ? 'border-[#00C896] text-[#1A1F2E]'
+                    : 'border-transparent text-gray-400 hover:text-gray-700 hover:border-gray-200'
                 }`}
               >
                 {m.label.slice(0, 3)}
@@ -4375,7 +4966,8 @@ export default function App() {
         )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto px-6 py-8 bg-gray-200">
+        <main className="flex-1 overflow-auto px-4 py-4 md:px-8 md:py-8 bg-[#F7F8FA]">
+          <div key={activePage === 'dashboard' ? `dashboard-${selectedMonth}` : activePage} className="budgli-page-enter">
 
           {activePage === 'get-started' && (
             <GetStartedPage
@@ -4399,62 +4991,31 @@ export default function App() {
               variableOpen={dashVariableOpen} setVariableOpen={setDashVariableOpen}
               fixedOpen={dashFixedOpen}       setFixedOpen={setDashFixedOpen}
               savingsOpen={dashSavingsOpen}   setSavingsOpen={setDashSavingsOpen}
+              userGoals={userGoals}
             />
           )}
 
           {activePage === 'transactions' && (
             <div>
-              <div className="grid grid-cols-3 gap-4 mb-5">
-
+              <div className="mb-5">
                 {/* CSV Import — active */}
-                <label className="cursor-pointer bg-white rounded-xl border border-gray-100 p-5 flex flex-col items-center gap-3 hover:border-[#0D7377] hover:shadow-sm transition-all group">
-                  <div className="w-10 h-10 rounded-full bg-[#0D7377]/10 flex items-center justify-center group-hover:bg-[#0D7377]/20 transition-colors">
-                    <svg className="w-5 h-5" style={{ color: '#0D7377' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <label className="cursor-pointer budgli-card rounded-xl p-5 flex items-center gap-4 hover:border-[#00C896] hover:shadow-sm transition-all group">
+                  <div className="w-10 h-10 rounded-full bg-[#00C896]/10 flex items-center justify-center group-hover:bg-[#00C896]/20 transition-colors shrink-0">
+                    <svg className="w-5 h-5" style={{ color: '#00C896' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
                   </div>
-                  <div className="text-center">
+                  <div>
                     <p className="text-sm font-semibold text-gray-800">Import CSV</p>
                     <p className="text-xs text-gray-400 mt-0.5">RBC, TD, Scotiabank, BMO, CIBC</p>
                   </div>
                   <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileInput} />
                 </label>
-
-                {/* Connect Bank — coming soon */}
-                <div className="relative bg-white rounded-xl border border-gray-100 p-5 flex flex-col items-center gap-3 opacity-50 cursor-not-allowed select-none">
-                  <span className="absolute top-3 right-3 text-[10px] font-semibold bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Coming Soon</span>
-                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 21H5a2 2 0 01-2-2V7a2 2 0 012-2h11l5 5v9a2 2 0 01-2 2z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h13M17 3v7" />
-                    </svg>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-semibold text-gray-600">Connect Bank</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Direct account sync</p>
-                  </div>
-                </div>
-
-                {/* Connect Credit Card — coming soon */}
-                <div className="relative bg-white rounded-xl border border-gray-100 p-5 flex flex-col items-center gap-3 opacity-50 cursor-not-allowed select-none">
-                  <span className="absolute top-3 right-3 text-[10px] font-semibold bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Coming Soon</span>
-                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                    </svg>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-semibold text-gray-600">Connect Credit Card</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Automatic card tracking</p>
-                  </div>
-                </div>
-
               </div>
 
               {/* Privacy note */}
               <p className="text-xs text-gray-400 text-center mt-3 mb-5">
-                Your CSV is used only to categorize and summarize transactions. Raw data is not shared.{' '}
-                You can delete your history at any time.
+                CSV files are processed on import. The original file is never stored. You can delete your transaction history at any time from Settings. Bank and credit card sync coming soon.
               </p>
 
               {/* Upload state banner */}
@@ -4469,7 +5030,7 @@ export default function App() {
                   { label: 'Complete',     sub: 'All transactions tagged' },
                 ]
                 return (
-                  <div className="bg-white rounded-xl border border-gray-100 px-6 py-4 mb-5 flex items-start">
+                  <div className="budgli-card rounded-xl px-4 py-4 mb-5 overflow-x-auto no-scrollbar"><div className="flex items-start min-w-[320px]">
                     {steps.map((s, i) => {
                       const done   = i < activeStep
                       const active = i === activeStep
@@ -4477,34 +5038,34 @@ export default function App() {
                         <Fragment key={s.label}>
                           <div className="flex flex-col items-center gap-1 shrink-0">
                             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                              done   ? 'bg-teal-500 text-white' :
-                              active ? 'bg-[#0D7377] text-white' :
+                              done   ? 'bg-[#00C896] text-white' :
+                              active ? 'bg-[#1A1F2E] text-white' :
                               'bg-gray-100 text-gray-400'
                             }`}>
                               {done ? '✓' : i + 1}
                             </div>
-                            <span className={`text-[11px] font-semibold whitespace-nowrap ${active ? 'text-gray-800' : done ? 'text-teal-600' : 'text-gray-400'}`}>{s.label}</span>
+                            <span className={`text-[11px] font-semibold whitespace-nowrap ${active ? 'text-gray-800' : done ? 'text-[#00C896]' : 'text-gray-400'}`}>{s.label}</span>
                             {active && <span className="text-[10px] text-gray-400 whitespace-nowrap">{s.sub}</span>}
                           </div>
                           {i < steps.length - 1 && (
-                            <div className={`flex-1 h-px mx-3 mt-3.5 ${i < activeStep ? 'bg-teal-400' : 'bg-gray-200'}`} />
+                            <div className={`flex-1 h-px mx-3 mt-3.5 ${i < activeStep ? 'bg-[#00C896]' : 'bg-gray-200'}`} />
                           )}
                         </Fragment>
                       )
                     })}
-                  </div>
+                  </div></div>
                 )
               })()}
 
               {/* Upload History */}
-              <div className="rounded-xl border border-gray-300 mb-5 overflow-hidden">
+              <div className="budgli-card rounded-xl mb-5 overflow-hidden">
                 <button
                   onClick={() => setUploadHistoryOpen(o => !o)}
                   className="w-full flex items-center justify-between px-5 py-4 text-left bg-gray-100"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#0D737715' }}>
-                      <svg className="w-4 h-4" style={{ color: '#0D7377' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#00C89615' }}>
+                      <svg className="w-4 h-4" style={{ color: '#00C896' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
                       </svg>
                     </div>
@@ -4541,7 +5102,7 @@ export default function App() {
                           const allDupes = newCount === 0
                           return (
                             <div key={u.id} className="flex items-center px-5 py-3.5 gap-3">
-                              <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${i === 0 && !allDupes ? 'bg-[#0D7377]' : 'bg-gray-100'}`}>
+                              <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${i === 0 && !allDupes ? 'bg-[#1A1F2E]' : 'bg-gray-100'}`}>
                                 <svg className={`w-3.5 h-3.5 ${i === 0 && !allDupes ? 'text-white' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                 </svg>
@@ -4559,7 +5120,7 @@ export default function App() {
                                   {total} dupes
                                 </span>
                               ) : (
-                                <span className="text-xs font-semibold tabular-nums shrink-0 px-2 py-1 rounded-full" style={{ backgroundColor: '#0D737715', color: '#0D7377' }}>
+                                <span className="text-xs font-semibold tabular-nums shrink-0 px-2 py-1 rounded-full" style={{ backgroundColor: '#00C89615', color: '#00A87A' }}>
                                   +{newCount} new
                                 </span>
                               )}
@@ -4600,10 +5161,13 @@ export default function App() {
               key={selectedYear}
               salary={salary}
               onSalaryChange={handleSalaryChange}
+              onSalaryBlur={handleSalaryBlur}
+              onSaveSalary={handleSaveSalary}
               transactions={transactions}
               selectedMonth={selectedMonth}
               selectedYear={selectedYear}
               fixedCosts={getActiveForMonth(fixedCosts, selectedYear, selectedMonth)}
+              userGoals={userGoals}
             />
           )}
 
@@ -4678,11 +5242,16 @@ export default function App() {
               onClearTransactions={() => { setTransactions([]); setDedupKeyCache(new Set()); setCsvUploads([]) }}
               darkMode={darkMode}
               onToggleDark={toggleDarkMode}
+              userGoals={userGoals}
+              onUpdateGoals={() => setShowGoalOnboarding(true)}
             />
           )}
 
+          {activePage === 'feedback' && <FeedbackPage user={user} />}
+
           {activePage === 'privacy' && <Privacy />}
 
+          </div>
         </main>
       </div>
       <Analytics />

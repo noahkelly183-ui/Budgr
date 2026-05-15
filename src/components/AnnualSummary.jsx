@@ -178,6 +178,8 @@ export default function AnnualSummary({ transactions, salary, fixedCosts, saving
             fill="#0D7377"
             radius={[3, 3, 0, 0]}
             label={{ position: 'top', fontSize: 9, fill: '#9CA3AF', formatter: v => v > 0 ? fmtK(v) : '' }}
+            animationDuration={600}
+            animationEasing="ease-out"
           >
             {chartData.map((entry, i) => (
               <Cell key={i} fill={entry.spend > 0 ? '#0D7377' : 'transparent'} />

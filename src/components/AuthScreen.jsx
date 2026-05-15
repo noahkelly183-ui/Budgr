@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../supabase.js'
+import { track } from '@vercel/analytics/react'
 
 /* ── icons ── */
 function EyeOpen() {
@@ -77,7 +78,7 @@ const FEATURES = [
   {
     icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} style={{ pointerEvents: 'none' }}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>,
     title: 'CSV Import',
-    desc: 'Drop in your bank export and Budgr auto-categorizes every transaction.',
+    desc: 'Drop in your bank export and Budgli auto-categorizes every transaction.',
   },
 ]
 
@@ -103,7 +104,11 @@ export default function AuthScreen() {
   const [loading, setLoading]   = useState(false)
   const [success, setSuccess]   = useState(false)  // signup verified / reset sent
 
+  // Fire once when the auth screen mounts (unauthenticated user sees the landing page)
+  useEffect(() => { track('landing_page_view') }, [])
+
   function switchMode(next) {
+    if (next === 'signup') track('signup_started')
     setMode(next)
     setError('')
     setSuccess(false)
@@ -121,7 +126,14 @@ export default function AuthScreen() {
         const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: window.location.origin,
         })
-        if (err) setError(err.message)
+        if (err) {
+          const msg = err.message?.toLowerCase() ?? ''
+          if (msg.includes('rate limit') || msg.includes('too many') || msg.includes('exceeded')) {
+            setError('Too many reset requests. Please wait a few minutes, then try again — or check your spam folder for an email that may have already been sent.')
+          } else {
+            setError(err.message)
+          }
+        }
         else setSuccess(true)
       } finally {
         setLoading(false)
@@ -140,7 +152,7 @@ export default function AuthScreen() {
         ? await supabase.auth.signInWithPassword({ email, password })
         : await supabase.auth.signUp({ email, password })
       if (err) setError(err.message)
-      else if (mode === 'signup') setSuccess(true)
+      else if (mode === 'signup') { track('signup_completed'); setSuccess(true) }
     } finally {
       setLoading(false)
     }
@@ -156,7 +168,7 @@ export default function AuthScreen() {
     'w-full text-sm text-white outline-none transition-all',
     'placeholder-white/25',
     'bg-white/[0.06] border border-white/10 rounded-xl px-4 py-3',
-    'focus:border-[#14A085] focus:bg-white/[0.08]',
+    'focus:border-[#00C896] focus:bg-white/[0.08]',
     // suppress browser autofill overlay colour
     '[&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_rgba(15,52,96,0.9)]',
     '[&:-webkit-autofill]:[-webkit-text-fill-color:#fff]',
@@ -176,17 +188,17 @@ export default function AuthScreen() {
 
         <div className="relative">
           <div className="flex items-center gap-3 mb-16">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#0D7377,#14A085)' }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#00C896,#00C896)' }}>
               <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2} style={{ pointerEvents: 'none' }}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <span className="text-white font-bold text-xl tracking-tight">Budgr</span>
+            <span className="text-white font-bold text-xl tracking-tight">Budgli</span>
           </div>
 
           <h1 className="text-4xl font-black text-white leading-tight mb-4">
             Run your finances<br />
-            <span style={{ background: 'linear-gradient(90deg,#0D7377,#14A085)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <span style={{ background: 'linear-gradient(90deg,#00C896,#00C896)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               like a business.
             </span>
           </h1>
@@ -198,7 +210,7 @@ export default function AuthScreen() {
             {FEATURES.map(f => (
               <div key={f.title} className="flex items-start gap-4">
                 <div className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(13,115,119,0.18)', border: '1px solid rgba(13,115,119,0.3)' }}>
-                  <span className="text-[#14A085]">{f.icon}</span>
+                  <span className="text-[#00C896]">{f.icon}</span>
                 </div>
                 <div>
                   <p className="text-white text-sm font-semibold mb-0.5">{f.title}</p>
@@ -231,12 +243,12 @@ export default function AuthScreen() {
           {/* Mobile logo */}
           <div className="lg:hidden text-center mb-8">
             <div className="inline-flex items-center gap-2.5 mb-2">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#0D7377,#14A085)' }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#00C896,#00C896)' }}>
                 <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2} style={{ pointerEvents: 'none' }}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <span className="text-white font-bold text-lg tracking-tight">Budgr</span>
+              <span className="text-white font-bold text-lg tracking-tight">Budgli</span>
             </div>
             <p className="text-white/40 text-sm">Run your finances like a business.</p>
           </div>
@@ -278,7 +290,7 @@ export default function AuthScreen() {
               <SuccessCard
                 title="Check your email"
                 body={<>We sent a reset link to <span className="text-white/70">{email}</span>.</>}
-                action={<button onClick={() => switchMode('login')} className="mt-5 text-xs text-[#14A085] hover:underline">Back to sign in</button>}
+                action={<button onClick={() => switchMode('login')} className="mt-5 text-xs text-[#00C896] hover:underline">Back to sign in</button>}
               />
             )}
 
@@ -287,7 +299,7 @@ export default function AuthScreen() {
               <SuccessCard
                 title="Check your email"
                 body={<>We sent a confirmation link to <span className="text-white/70">{email}</span>.</>}
-                action={<button onClick={() => switchMode('login')} className="mt-5 text-xs text-[#14A085] hover:underline">Back to sign in</button>}
+                action={<button onClick={() => switchMode('login')} className="mt-5 text-xs text-[#00C896] hover:underline">Back to sign in</button>}
               />
             )}
 
@@ -344,7 +356,7 @@ export default function AuthScreen() {
                         <button
                           type="button"
                           onClick={() => switchMode('forgot')}
-                          className="text-xs text-white/35 hover:text-[#14A085] transition-colors"
+                          className="text-xs text-white/35 hover:text-[#00C896] transition-colors"
                         >
                           Forgot password?
                         </button>
@@ -365,10 +377,10 @@ export default function AuthScreen() {
                         value={confirm}
                         onChange={e => setConfirm(e.target.value)}
                         autoComplete="new-password"
-                        className={inputClass + (confirm && confirm !== password ? ' !border-red-500/50' : confirm && confirm === password ? ' !border-[#14A085]/50' : '')}
+                        className={inputClass + (confirm && confirm !== password ? ' !border-red-500/50' : confirm && confirm === password ? ' !border-[#00C896]/50' : '')}
                       />
                       {confirm && confirm === password && (
-                        <p className="text-[#14A085] text-xs mt-1.5 flex items-center gap-1">
+                        <p className="text-[#00C896] text-xs mt-1.5 flex items-center gap-1">
                           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} style={{ pointerEvents: 'none' }}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                           </svg>
@@ -391,7 +403,7 @@ export default function AuthScreen() {
                   {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
                   <button
                     onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}
-                    className="text-[#14A085] hover:text-white font-medium transition-colors"
+                    className="text-[#00C896] hover:text-white font-medium transition-colors"
                   >
                     {mode === 'login' ? 'Sign up free' : 'Sign in'}
                   </button>
@@ -419,7 +431,7 @@ function SubmitButton({ loading, label, loadingLabel }) {
       type="submit"
       disabled={loading}
       className="w-full py-3 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-1"
-      style={{ background: 'linear-gradient(135deg,#0D7377,#14A085)' }}
+      style={{ background: 'linear-gradient(135deg,#00C896,#00C896)' }}
     >
       {loading ? (
         <span className="flex items-center justify-center gap-2">
@@ -449,7 +461,7 @@ function SuccessCard({ title, body, action }) {
   return (
     <div className="text-center py-4">
       <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: 'rgba(20,160,133,0.15)' }}>
-        <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#14A085" strokeWidth={2} style={{ pointerEvents: 'none' }}>
+        <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#00C896" strokeWidth={2} style={{ pointerEvents: 'none' }}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>

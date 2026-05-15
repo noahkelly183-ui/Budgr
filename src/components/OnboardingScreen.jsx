@@ -46,7 +46,7 @@ export default function OnboardingScreen({ onNavigate, onDismiss }) {
     <div className="min-h-screen bg-[#1A1A2E] flex flex-col items-center justify-center px-6 py-16">
 
       <div className="text-center mb-12">
-        <p className="text-white font-bold text-4xl tracking-tight mb-4">Budgr</p>
+        <p className="text-white font-bold text-4xl tracking-tight mb-4">Budgli</p>
         <h1 className="text-white text-2xl font-semibold mb-3">Run your personal finances like a business.</h1>
         <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed">
           Track your revenue, costs, and profit margin in one clean dashboard.
