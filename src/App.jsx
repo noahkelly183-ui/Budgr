@@ -1477,10 +1477,10 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
       body: savingsRate >= 20
         ? `Your savings rate is ${r}% this month — excellent. You're keeping more than 1 in 5 dollars you earn.`
         : savingsRate >= 10
-          ? `Your savings rate is ${r}% — solid. Most advisors suggest aiming for 20%+ over time.`
+          ? `Your savings rate is ${r}% — below the 20% benchmark. You're heading in the right direction but there's meaningful room to grow.`
           : savingsRate > 0
-            ? `You saved ${r}% of your income this month. Pushing above 10% will start to build real momentum.`
-            : 'Spending exceeded income this month. Review your variable costs to find room to save.',
+            ? `Your savings rate is ${r}% this month — well below the 20% target. This is a signal to cut variable spending or increase income.`
+            : 'You spent more than you earned this month. Review fixed costs and variable spending to find room to save.',
     })
   }
 
@@ -1636,7 +1636,7 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
             </div>
           ) : (
             <div className="space-y-4">
-              {leaks.slice(0, 2).map((l, i) => (
+              {leaks.slice(0, 3).map((l, i) => (
                 <div key={i} className="flex items-start gap-2.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1.5" />
                   <div className="flex-1 min-w-0">
