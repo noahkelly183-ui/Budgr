@@ -409,11 +409,21 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
         {/* Fuzzy match prompt */}
         {fuzzyPrompt && (
           <div className="mb-4 flex items-center justify-between gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-indigo-500 text-base shrink-0">✦</span>
-              <p className="text-xs text-indigo-700 min-w-0">
-                Apply <span className="font-semibold">"{fuzzyPrompt.category}"</span> to {fuzzyPrompt.matches.length} similar untagged transaction{fuzzyPrompt.matches.length !== 1 ? 's' : ''}?
-              </p>
+            <div className="flex items-start gap-2 min-w-0">
+              <span className="text-indigo-500 text-base shrink-0 mt-0.5">✦</span>
+              <div className="min-w-0">
+                <p className="text-xs text-indigo-700">
+                  Apply <span className="font-semibold">"{fuzzyPrompt.category}"</span> to {fuzzyPrompt.matches.length} similar untagged transaction{fuzzyPrompt.matches.length !== 1 ? 's' : ''}?
+                </p>
+                <p className="text-xs text-indigo-400 mt-0.5 truncate">
+                  {(() => {
+                    const descs = [...new Set(fuzzyPrompt.matches.map(t => t.description))]
+                    const shown = descs.slice(0, 3)
+                    const extra = descs.length - shown.length
+                    return shown.join(' · ') + (extra > 0 ? ` · +${extra} more` : '')
+                  })()}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
