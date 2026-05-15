@@ -34,7 +34,6 @@ function autoDetect(headers) {
 
 export default function CsvColumnMapper({ pendingMapper, onMap, onCancel }) {
   const { headers, sampleRows, filename } = pendingMapper
-  console.log('[MAPPER DEBUG] CsvColumnMapper rendered', { headers, sampleRows })
   const [assignments, setAssignments] = useState(() => autoDetect(headers))
 
   const error = useMemo(() => {

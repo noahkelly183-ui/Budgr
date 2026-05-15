@@ -236,6 +236,6 @@ export function parseCSV(text) {
   if (bank === 'rbc')  return parseRBC(lines, headers)
   if (bank === 'cibc') return parseCIBCHeadered(lines, headers)
 
-  console.warn('[csvParsers] Unrecognised CSV format — headers:', headers)
+  if (import.meta.env.DEV) console.warn('[csvParsers] Unrecognised CSV format — headers:', headers)
   return []
 }

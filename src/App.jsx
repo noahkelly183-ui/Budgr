@@ -4407,22 +4407,16 @@ export default function App() {
 
   // Stage 1: read the file, detect format, dedup, and set pendingImport for the preview modal.
   function handleFile(file) {
-    console.log('[MAPPER DEBUG] handleFile reached', file.name, file.size)
     if (isDemoMode) { setToast({ msg: 'CSV import is disabled in Demo Mode' }); setTimeout(() => setToast(null), 3000); return }
     const reader = new FileReader()
     reader.onload = async e => {
       const text           = e.target.result
       const detectedFormat = detectFormat(text)
-      console.log('[MAPPER DEBUG] detectedFormat', detectedFormat)
 
       // Unknown format — open the manual column mapper instead of erroring
       if (detectedFormat === 'unknown') {
-        console.log('[MAPPER DEBUG] entering unknown CSV branch')
         const mapperData = parseForMapper(text)
-        console.log('[MAPPER DEBUG] parseForMapper result', mapperData)
-        console.log('[MAPPER DEBUG] setting pendingMapper')
         setPendingMapper({ ...mapperData, filename: file.name })
-        console.log('[MAPPER DEBUG] pendingMapper after set requested')
         return
       }
 
@@ -4433,7 +4427,6 @@ export default function App() {
         return { ...t, category: remembered || t.category || '', fromMemory: !!remembered }
       })
       if (incoming.length === 0) {
-        console.log('[MAPPER DEBUG] unreadable CSV toast triggered from: handleFile — incoming.length === 0 after parseCSV (format was', detectedFormat, ')')
         setToast({ msg: 'Budgli could not read this CSV. Please check the file format.' })
         clearTimeout(toastTimerRef.current)
         toastTimerRef.current = setTimeout(() => setToast(null), 5000)
