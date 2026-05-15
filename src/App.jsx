@@ -316,8 +316,15 @@ function CategoryCombobox({ value, onChange, suggestions = [] }) {
 // ─── TransactionView (Transactions page — grouped by month with filter) ───────
 
 function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzyAccept, onFuzzyDismiss, onImport }) {
-  const [filter, setFilter]       = useState('all')
-  const [catFilter, setCatFilter] = useState('')
+  const [filter, setFilter]           = useState('all')
+  const [catFilter, setCatFilter]     = useState('')
+  const [selectedFuzzyIds, setSelectedFuzzyIds] = useState(() =>
+    fuzzyPrompt ? new Set(fuzzyPrompt.matches.map(t => t.id)) : new Set()
+  )
+
+  useEffect(() => {
+    if (fuzzyPrompt) setSelectedFuzzyIds(new Set(fuzzyPrompt.matches.map(t => t.id)))
+  }, [fuzzyPrompt])
 
   const yearTxns       = selectedYear ? txns.filter(t => t.date?.startsWith(selectedYear)) : txns
   const untaggedCount  = yearTxns.filter(t => !t.category).length
@@ -408,35 +415,52 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
 
         {/* Fuzzy match prompt */}
         {fuzzyPrompt && (
-          <div className="mb-4 flex items-center justify-between gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
-            <div className="flex items-start gap-2 min-w-0">
-              <span className="text-indigo-500 text-base shrink-0 mt-0.5">✦</span>
-              <div className="min-w-0">
+          <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-indigo-100">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-indigo-500 text-base shrink-0">✦</span>
                 <p className="text-xs text-indigo-700">
-                  Apply <span className="font-semibold">"{fuzzyPrompt.category}"</span> to {fuzzyPrompt.matches.length} similar untagged transaction{fuzzyPrompt.matches.length !== 1 ? 's' : ''}?
-                </p>
-                <p className="text-xs text-indigo-400 mt-0.5 truncate">
-                  {(() => {
-                    const descs = [...new Set(fuzzyPrompt.matches.map(t => t.description))]
-                    const shown = descs.slice(0, 3)
-                    const extra = descs.length - shown.length
-                    return shown.join(' · ') + (extra > 0 ? ` · +${extra} more` : '')
-                  })()}
+                  Apply <span className="font-semibold">"{fuzzyPrompt.category}"</span> to similar untagged transactions?
                 </p>
               </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={onFuzzyAccept}
-                className="px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-              >
-                Apply
-              </button>
-              <button
-                onClick={onFuzzyDismiss}
-                className="px-3 py-1 rounded-lg text-xs font-medium text-indigo-500 hover:text-indigo-700 transition-colors"
-              >
+              <button onClick={onFuzzyDismiss} className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors shrink-0">
                 Dismiss
+              </button>
+            </div>
+
+            {/* Selectable transaction list */}
+            <div className="max-h-56 overflow-y-auto divide-y divide-indigo-50">
+              {fuzzyPrompt.matches.map(t => (
+                <label key={t.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-indigo-100/60">
+                  <input
+                    type="checkbox"
+                    checked={selectedFuzzyIds.has(t.id)}
+                    onChange={() => setSelectedFuzzyIds(prev => {
+                      const next = new Set(prev)
+                      next.has(t.id) ? next.delete(t.id) : next.add(t.id)
+                      return next
+                    })}
+                    className="accent-indigo-600 shrink-0"
+                  />
+                  <span className="flex-1 text-xs text-gray-700 truncate">{t.description}</span>
+                  <span className="text-xs text-gray-400 tabular-nums shrink-0 hidden sm:block">{fmtDate(t.date)}</span>
+                  <span className={`text-xs font-medium tabular-nums shrink-0 ${t.type === 'credit' ? 'text-[#00C896]' : 'text-gray-700'}`}>
+                    {t.type === 'credit' ? '+' : ''}{fmt(t.amount)}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-indigo-100">
+              <p className="text-xs text-indigo-400">{selectedFuzzyIds.size} of {fuzzyPrompt.matches.length} selected</p>
+              <button
+                onClick={() => onFuzzyAccept([...selectedFuzzyIds])}
+                disabled={selectedFuzzyIds.size === 0}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Apply to {selectedFuzzyIds.size} transaction{selectedFuzzyIds.size !== 1 ? 's' : ''}
               </button>
             </div>
           </div>
@@ -4263,23 +4287,24 @@ export default function App() {
     }
   }
 
-  function handleFuzzyAccept() {
+  function handleFuzzyAccept(selectedIds) {
     if (!fuzzyPrompt) return
-    const { category, matches } = fuzzyPrompt
-    const ids = matches.map(tx => tx.id)
+    const { category } = fuzzyPrompt
+    const idSet = new Set(selectedIds)
+    if (idSet.size === 0) { setFuzzyPrompt(null); return }
     setTransactions(prev => prev.map(tx =>
-      ids.includes(tx.id) ? { ...tx, category, fromMemory: true } : tx
+      idSet.has(tx.id) ? { ...tx, category, fromMemory: true } : tx
     ))
     if (!isDemoMode) {
       supabase.from('transactions')
         .update({ category, from_memory: true })
-        .in('id', ids)
+        .in('id', [...idSet])
         .eq('user_id', user.id)
         .then(({ error }) => { if (error) console.error('[budgr] fuzzyAccept failed:', error.message) })
     }
     setFuzzyPrompt(null)
     clearTimeout(setCategory._timer)
-    setToast({ msg: `Tagged ${matches.length} transaction${matches.length !== 1 ? 's' : ''} as "${category}"` })
+    setToast({ msg: `Tagged ${idSet.size} transaction${idSet.size !== 1 ? 's' : ''} as "${category}"` })
     setCategory._timer = setTimeout(() => setToast(null), 4000)
   }
 
