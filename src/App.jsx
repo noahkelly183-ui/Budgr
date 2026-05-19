@@ -7,6 +7,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react'
 import { supabase } from './supabase.js'
 import { DEMO_TRANSACTIONS, DEMO_FIXED_COSTS, DEMO_SAVINGS_ENTRIES, DEMO_SALARY, DEMO_YEAR } from './data/demoData.js'
 import AuthScreen from './components/AuthScreen.jsx'
+import ResetPasswordScreen from './components/ResetPasswordScreen.jsx'
 import EmptyState from './components/EmptyState.jsx'
 import SavingsForecastPage from './components/SavingsForecastPage.jsx'
 import HelpTip from './components/HelpTip.jsx'
@@ -315,16 +316,62 @@ function CategoryCombobox({ value, onChange, suggestions = [] }) {
 
 // ─── TransactionView (Transactions page — grouped by month with filter) ───────
 
-function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzyAccept, onFuzzyDismiss, onImport }) {
-  const [filter, setFilter]           = useState('all')
-  const [catFilter, setCatFilter]     = useState('')
-  const [selectedFuzzyIds, setSelectedFuzzyIds] = useState(() =>
-    fuzzyPrompt ? new Set(fuzzyPrompt.matches.map(t => t.id)) : new Set()
+function FuzzyTagPanel({ category, matches, onAccept, onDismiss }) {
+  const [selectedIds, setSelectedIds] = useState(() => new Set(matches.map(t => t.id)))
+  function toggle(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+  return (
+    <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-indigo-100">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-indigo-500 text-base shrink-0">✦</span>
+          <p className="text-xs text-indigo-700">
+            Apply <span className="font-semibold">"{category}"</span> to similar untagged transactions?
+          </p>
+        </div>
+        <button onClick={onDismiss} className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors shrink-0">
+          Dismiss
+        </button>
+      </div>
+      <div className="max-h-56 overflow-y-auto divide-y divide-indigo-50">
+        {matches.map(t => (
+          <label key={t.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-indigo-100/60">
+            <input
+              type="checkbox"
+              checked={selectedIds.has(t.id)}
+              onChange={() => toggle(t.id)}
+              className="accent-indigo-600 shrink-0"
+            />
+            <span className="flex-1 text-xs text-gray-700 truncate">{t.description}</span>
+            <span className="text-xs text-gray-400 tabular-nums shrink-0 hidden sm:block">{fmtDate(t.date)}</span>
+            <span className={`text-xs font-medium tabular-nums shrink-0 ${t.type === 'credit' ? 'text-[#00C896]' : 'text-gray-700'}`}>
+              {t.type === 'credit' ? '+' : ''}{fmt(t.amount)}
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-indigo-100">
+        <p className="text-xs text-indigo-400">{selectedIds.size} of {matches.length} selected</p>
+        <button
+          onClick={() => onAccept([...selectedIds])}
+          disabled={selectedIds.size === 0}
+          className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Apply to {selectedIds.size} transaction{selectedIds.size !== 1 ? 's' : ''}
+        </button>
+      </div>
+    </div>
   )
+}
 
-  useEffect(() => {
-    if (fuzzyPrompt) setSelectedFuzzyIds(new Set(fuzzyPrompt.matches.map(t => t.id)))
-  }, [fuzzyPrompt])
+function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzyAccept, onFuzzyDismiss, onImport }) {
+  const [filter, setFilter]       = useState('all')
+  const [catFilter, setCatFilter] = useState('')
 
   const yearTxns       = selectedYear ? txns.filter(t => t.date?.startsWith(selectedYear)) : txns
   const untaggedCount  = yearTxns.filter(t => !t.category).length
@@ -415,55 +462,13 @@ function TransactionView({ txns, selectedYear, setCategory, fuzzyPrompt, onFuzzy
 
         {/* Fuzzy match prompt */}
         {fuzzyPrompt && (
-          <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-xl overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-indigo-100">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-indigo-500 text-base shrink-0">✦</span>
-                <p className="text-xs text-indigo-700">
-                  Apply <span className="font-semibold">"{fuzzyPrompt.category}"</span> to similar untagged transactions?
-                </p>
-              </div>
-              <button onClick={onFuzzyDismiss} className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors shrink-0">
-                Dismiss
-              </button>
-            </div>
-
-            {/* Selectable transaction list */}
-            <div className="max-h-56 overflow-y-auto divide-y divide-indigo-50">
-              {fuzzyPrompt.matches.map(t => (
-                <label key={t.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-indigo-100/60">
-                  <input
-                    type="checkbox"
-                    checked={selectedFuzzyIds.has(t.id)}
-                    onChange={() => setSelectedFuzzyIds(prev => {
-                      const next = new Set(prev)
-                      next.has(t.id) ? next.delete(t.id) : next.add(t.id)
-                      return next
-                    })}
-                    className="accent-indigo-600 shrink-0"
-                  />
-                  <span className="flex-1 text-xs text-gray-700 truncate">{t.description}</span>
-                  <span className="text-xs text-gray-400 tabular-nums shrink-0 hidden sm:block">{fmtDate(t.date)}</span>
-                  <span className={`text-xs font-medium tabular-nums shrink-0 ${t.type === 'credit' ? 'text-[#00C896]' : 'text-gray-700'}`}>
-                    {t.type === 'credit' ? '+' : ''}{fmt(t.amount)}
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-indigo-100">
-              <p className="text-xs text-indigo-400">{selectedFuzzyIds.size} of {fuzzyPrompt.matches.length} selected</p>
-              <button
-                onClick={() => onFuzzyAccept([...selectedFuzzyIds])}
-                disabled={selectedFuzzyIds.size === 0}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Apply to {selectedFuzzyIds.size} transaction{selectedFuzzyIds.size !== 1 ? 's' : ''}
-              </button>
-            </div>
-          </div>
+          <FuzzyTagPanel
+            key={`${fuzzyPrompt.category}-${fuzzyPrompt.matches.map(t => t.id).join('-')}`}
+            category={fuzzyPrompt.category}
+            matches={fuzzyPrompt.matches}
+            onAccept={onFuzzyAccept}
+            onDismiss={onFuzzyDismiss}
+          />
         )}
 
         {/* Transaction list */}
@@ -953,7 +958,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
             )}
           </div>
           <button onClick={handleAdd} disabled={!name.trim() || !amount || !addCat}
-            className="col-span-2 sm:col-auto w-full sm:w-auto px-4 py-2 bg-[#1A1F2E] hover:bg-[#2d3748] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            className="col-span-2 sm:col-auto w-full sm:w-auto px-4 py-2 bg-[#0D7377] hover:bg-[#0b6268] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
         </div>
@@ -961,10 +966,10 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
 
       {fixedCosts.length === 0 ? (
         <EmptyState
-          icon="📋"
+          icon={<CalendarDays className="w-6 h-6 text-[#0D7377]" />}
           title="No fixed costs yet"
-          description="Add recurring expenses like rent, subscriptions, or insurance to track them across your monthly and annual summaries."
-          actionLabel="Add a fixed cost"
+          description="Add your recurring monthly expenses so Budgli can show how much of your income is already committed."
+          actionLabel="Add fixed cost"
           onAction={() => nameInputRef.current?.focus()}
         />
       ) : (
@@ -1135,6 +1140,7 @@ function FixedCostsPage({ fixedCosts, selectedYear, selectedMonth, onAdd, onUpda
 // ─── SavingsPage ─────────────────────────────────────────────────────────────
 
 function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpdate, onDelete }) {
+  const nameInputRef = useRef(null)
   const [name, setName]               = useState('')
   const [amount, setAmount]           = useState('')
   const [category, setCategory]       = useState('')
@@ -1193,7 +1199,7 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3 sm:items-end">
           <div className="col-span-2 sm:flex-1 sm:min-w-40">
             <label className="block text-xs text-gray-500 mb-1.5">Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)}
+            <input ref={nameInputRef} type="text" value={name} onChange={e => setName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="e.g. RRSP contribution" className={addInput} />
           </div>
           <div className="sm:w-36">
@@ -1226,7 +1232,7 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
             )}
           </div>
           <button onClick={handleAdd} disabled={!name.trim() || !amount || !addCat}
-            className="col-span-2 sm:col-auto w-full sm:w-auto px-4 py-2 bg-[#1A1F2E] hover:bg-[#2d3748] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            className="col-span-2 sm:col-auto w-full sm:w-auto px-4 py-2 bg-[#0D7377] hover:bg-[#0b6268] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Add
           </button>
         </div>
@@ -1234,10 +1240,14 @@ function SavingsPage({ savingsEntries, selectedYear, selectedMonth, onAdd, onUpd
       </div>
 
       {savingsEntries.length === 0 ? (
-        <div className="budgli-card rounded-xl p-8 text-center">
-          <p className="text-sm text-gray-400">No savings allocations yet — add your first above</p>
-          <p className="text-xs text-gray-300 mt-1">Track where your savings go each month (RRSP, TFSA, investments, etc.)</p>
-        </div>
+        <EmptyState
+          icon={<PiggyBank className="w-6 h-6 text-[#00C896]" />}
+          iconBg="bg-[#00C896]/10"
+          title="No savings added yet"
+          description="Add your savings accounts or goals so Budgli can track what you are keeping and where it is going."
+          actionLabel="Add savings"
+          onAction={() => nameInputRef.current?.focus()}
+        />
       ) : (
         <div className="budgli-card rounded-xl overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex justify-between items-center gap-3">
@@ -1577,7 +1587,7 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
   if (insights.length === 0 && leaks.length === 0 && txnSpent === 0) return null
 
   return (
-    <div className="mt-5 bg-white rounded-2xl border border-gray-100 overflow-hidden" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+    <div className="mt-5 budgli-card rounded-xl overflow-hidden">
 
       {/* Section header */}
       <div className="flex items-center gap-2.5 px-6 pt-4 pb-3.5 border-b border-gray-100">
@@ -1662,7 +1672,7 @@ function AnalysisSection({ txns, selectedMonth, selectedYear, monthlyNet, txnSpe
 
 // ─── MonthlyDashboard ─────────────────────────────────────────────────────────
 
-function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, salary, fixedCosts, savingsEntries, variableOpen, setVariableOpen, fixedOpen, setFixedOpen, savingsOpen, setSavingsOpen, userGoals }) {
+function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, salary, fixedCosts, savingsEntries, variableOpen, setVariableOpen, fixedOpen, setFixedOpen, savingsOpen, setSavingsOpen, userGoals, onNavigate }) {
 
   const monthTxns  = txns.filter(t => yearMonthOf(t.date) === selectedYear + '-' + selectedMonth)
   const customCats = [...new Set(txns.map(t => t.category).filter(c => c && !CATS_SET.has(c)))].sort()
@@ -1783,31 +1793,32 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
   return (
     <div>
 
-      {/* Summary banner */}
-      {monthlyNet > 0 && (savingsRate !== null || bannerTopCat) && (
-        <div className="flex flex-col sm:flex-row gap-2 mb-5">
-          {savingsRate !== null && (
-            <div className="flex-1 bg-white rounded-xl px-4 py-3 border border-gray-100" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.12em] mb-1">Savings Rate</p>
-              <p className="text-sm font-semibold text-gray-900">Saved {savingsRate.toFixed(1)}% this month</p>
+      {/* Top summary cards — Total Spent + Amount Saved */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+        <div className="budgli-card rounded-xl p-4">
+          <div className="flex items-center gap-2.5 mb-2.5">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-50">
+              <Wallet className="w-4 h-4 text-red-400" />
             </div>
-          )}
-          {priorSavingsRateB !== null && savingsRate !== null && (
-            <div className="flex-1 bg-white rounded-xl px-4 py-3 border border-gray-100" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.12em] mb-1">vs {priorMonthNameB}</p>
-              <p className={`text-sm font-semibold ${savingsRate >= priorSavingsRateB ? 'text-[#00C896]' : 'text-[#E05252]'}`}>
-                {savingsRate >= priorSavingsRateB ? '↑ Up' : '↓ Down'} from {priorSavingsRateB.toFixed(1)}% in {priorMonthNameB}
-              </p>
-            </div>
-          )}
-          {bannerTopCat && (
-            <div className="flex-1 bg-white rounded-xl px-4 py-3 border border-gray-100" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.12em] mb-1">Top Spend</p>
-              <p className="text-sm font-semibold text-gray-900">Top spend: {bannerTopCat[0]} · {fmt(bannerTopCat[1])}</p>
-            </div>
-          )}
+            <p className="text-sm font-medium text-gray-500">Total Spent</p>
+          </div>
+          <p className="font-black text-gray-900 tabular-nums leading-none mb-1.5" style={{ fontSize: '2rem', letterSpacing: '-0.03em' }}>{fmt(totalSpent)}</p>
+          <p className="text-[11px] text-gray-400">How much money you spent this month</p>
         </div>
-      )}
+
+        <div className="budgli-card rounded-xl p-4">
+          <div className="flex items-center gap-2.5 mb-2.5">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0,200,150,0.1)' }}>
+              <PiggyBank className="w-4 h-4 text-[#00C896]" />
+            </div>
+            <p className="text-sm font-medium text-gray-500">Amount Saved</p>
+          </div>
+          <p className={`font-black tabular-nums leading-none mb-1.5 ${totalSavings > 0 ? 'text-[#00C896]' : 'text-gray-900'}`} style={{ fontSize: '2rem', letterSpacing: '-0.03em' }}>
+            {fmt(totalSavings)}
+          </p>
+          <p className="text-[11px] text-gray-400">How much money you saved this month</p>
+        </div>
+      </div>
 
       {/* Personalised goal insight */}
       {goalInsight && (
@@ -1822,7 +1833,7 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
 
       {/* Financial Health Score card */}
         {monthlyScore !== null ? (
-          <div className="bg-white rounded-2xl p-5 mb-5 border border-gray-100 overflow-hidden budgli-card-pop" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+          <div className="budgli-card rounded-xl p-5 mb-5 overflow-hidden budgli-card-pop">
             {/* Score header */}
             <div className="flex items-center gap-4 mb-5">
               <div className="flex items-end gap-1 shrink-0">
@@ -1887,12 +1898,16 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
             </div>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl p-6 mb-5 border border-gray-100 flex items-center gap-4 budgli-card-pop" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-            <div>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em] mb-2">Monthly Score</p>
-              <p className="text-2xl font-black text-gray-200">—</p>
-            </div>
-            <p className="text-xs text-gray-400 ml-2">Add salary details to generate your score</p>
+          <div className="budgli-card rounded-xl p-5 mb-5 budgli-card-pop">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em] mb-3">Monthly Score</p>
+            <p className="text-2xl font-black text-gray-200 mb-2">—</p>
+            <p className="text-xs text-gray-500 mb-4">Add income details to generate your score.</p>
+            <button
+              onClick={() => onNavigate?.('salary')}
+              className="px-4 py-2 rounded-lg text-xs font-medium bg-[#0D7377] hover:bg-[#0b6268] text-white transition-colors"
+            >
+              Set income
+            </button>
           </div>
         )}
 
@@ -2385,9 +2400,13 @@ function SalaryPage({ salary, onSalaryChange, onSalaryBlur, onSaveSalary, transa
                   ? (status === 'under' ? '#E05252' : '#00C896')
                   : (status === 'over'  ? '#B45309' : '#00C896')
 
+              const fillPct = a.actual !== null && a.suggested > 0
+                ? Math.min((a.actual / a.suggested) * 100, 120)
+                : 0
+
               return (
                 <div key={a.label} className={`py-4 ${i < allocations.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: a.color }} />
                       <span className="text-sm font-medium text-gray-700">{a.label}</span>
@@ -2397,13 +2416,30 @@ function SalaryPage({ salary, onSalaryChange, onSalaryBlur, onSaveSalary, transa
                       {monthlyNet > 0 ? <>{fmt(a.suggested)}<span className="text-xs text-gray-400 font-normal">/mo</span></> : '—'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-gray-400 mb-1.5 pl-[18px]">{a.helper}</p>
-                  {statusMsg && (
-                    <p className="text-[11px] font-medium pl-[18px]" style={{ color: statusColor }}>
-                      {statusMsg}
+
+                  {monthlyNet > 0 && (
+                    <div className="pl-[18px] mb-2">
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${fillPct}%`, backgroundColor: statusColor ?? a.color }}
+                        />
+                      </div>
                       {a.actual !== null && (
-                        <span className="text-gray-400 font-normal"> · Actual: {fmt(a.actual)}/mo</span>
+                        <div className="flex justify-between mt-1">
+                          <span className="text-[10px] text-gray-400">Actual: <span className="tabular-nums">{fmt(a.actual)}/mo</span></span>
+                          <span className="text-[10px] tabular-nums" style={{ color: statusColor ?? '#9CA3AF' }}>
+                            {Math.round(fillPct)}% of target
+                          </span>
+                        </div>
                       )}
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-gray-400 pl-[18px]">{a.helper}</p>
+                  {statusMsg && (
+                    <p className="text-[11px] font-medium mt-1 pl-[18px]" style={{ color: statusColor }}>
+                      {statusMsg}
                     </p>
                   )}
                 </div>
@@ -2580,7 +2616,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
 
       {/* Financial Health Score card */}
       {healthScore !== null ? (
-        <div className="bg-white rounded-2xl p-5 mb-6 border border-gray-100 overflow-hidden budgli-card-pop" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+        <div className="budgli-card rounded-xl p-5 mb-6 overflow-hidden budgli-card-pop">
           {/* Score header */}
           <div className="flex items-center gap-4 mb-5">
             <div className="flex items-end gap-1 shrink-0">
@@ -2645,7 +2681,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl p-6 mb-6 border border-gray-100 flex items-center gap-4 budgli-card-pop" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+        <div className="budgli-card rounded-xl p-6 mb-6 flex items-center gap-4 budgli-card-pop">
           <div>
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em] mb-2">Annual Score</p>
             <p className="text-2xl font-black text-gray-200">—</p>
@@ -2663,7 +2699,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
           {/* Annual Net Income */}
-          <div className="rounded-[14px] bg-white px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: '3px solid #00C896', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', animationDelay: '60ms' }}>
+          <div className="budgli-card rounded-xl px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: '3px solid #00C896', animationDelay: '60ms' }}>
             <div className="flex items-center gap-1.5 mb-2.5" style={{ color: '#00C896' }}>
               <Wallet className="w-3.5 h-3.5" />
               <span className="text-[10px] font-bold uppercase tracking-[0.12em]">Annual Net Income</span>
@@ -2675,7 +2711,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
           </div>
 
           {/* Total Expenses YTD */}
-          <div className="rounded-[14px] bg-white px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: '3px solid #E05252', boxShadow: '0 2px 16px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04)', animationDelay: '100ms' }}>
+          <div className="budgli-card rounded-xl px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: '3px solid #E05252', animationDelay: '100ms' }}>
             <div className="flex items-center gap-1.5 mb-2.5" style={{ color: '#E05252' }}>
               <TrendingDown className="w-3.5 h-3.5" />
               <span className="text-[10px] font-bold uppercase tracking-[0.12em]">Total Expenses YTD</span>
@@ -2686,7 +2722,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
           </div>
 
           {/* Savings YTD */}
-          <div className="rounded-[14px] bg-white px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: '3px solid #00C896', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', animationDelay: '140ms' }}>
+          <div className="budgli-card rounded-xl px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: '3px solid #00C896', animationDelay: '140ms' }}>
             <div className="flex items-center gap-1.5 mb-2.5" style={{ color: '#00C896' }}>
               <PiggyBank className="w-3.5 h-3.5" />
               <span className="text-[10px] font-bold uppercase tracking-[0.12em]">Savings YTD</span>
@@ -2700,7 +2736,7 @@ function AnnualSummary({ transactions, salary, fixedCosts, savingsEntries, selec
           {(() => {
             const rateColor = savingsRateYTD === null ? '#D1D5DB' : savingsRateYTD >= 20 ? '#00C896' : savingsRateYTD >= 10 ? '#B45309' : '#E05252'
             return (
-              <div className="rounded-[14px] bg-white px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: `3px solid ${rateColor}`, boxShadow: '0 2px 16px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04)', animationDelay: '180ms' }}>
+              <div className="budgli-card rounded-xl px-4 py-4 min-h-[95px] budgli-card-pop" style={{ borderTop: `3px solid ${rateColor}`, animationDelay: '180ms' }}>
                 <div className="flex items-center gap-1.5 mb-2.5" style={{ color: rateColor }}>
                   <Percent className="w-3.5 h-3.5" />
                   <span className="text-[10px] font-bold uppercase tracking-[0.12em]">Savings Rate YTD</span>
@@ -3221,7 +3257,7 @@ function YearComparison({ transactions, fixedCosts, savingsEntries, salaries, on
       {/* Banner */}
       {bannerText && (
         <div
-          className="rounded-2xl p-6 sm:p-8 flex items-center gap-5 sm:gap-8 relative overflow-hidden"
+          className="rounded-xl p-6 sm:p-8 flex items-center gap-5 sm:gap-8 relative overflow-hidden"
           style={{
             backgroundColor: '#ffffff',
             border: `1px solid ${isImproving ? '#BBF7D0' : '#FDE68A'}`,
@@ -3560,8 +3596,7 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
             {!step.done && (
               <button
                 onClick={() => onNavigate(step.page)}
-                className="shrink-0 text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-                style={{ backgroundColor: '#1A1F2E' }}
+                className="shrink-0 bg-[#0D7377] hover:bg-[#0b6268] text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
               >
                 {step.label} →
               </button>
@@ -3588,13 +3623,61 @@ function GetStartedPage({ salary, transactions, fixedCosts, onNavigate, onTryDem
 
 // ─── SettingsPage ─────────────────────────────────────────────────────────────
 
-function SettingsPage({ user, transactions, onClearTransactions, darkMode, onToggleDark }) {
+const GOAL_PRIMARY_OPTIONS = [
+  'Save more money', 'Reduce unnecessary spending', 'Pay down debt',
+  'Build an emergency fund', 'Understand where my money goes',
+  'Improve monthly cash flow', 'Prepare for a big purchase', 'Grow my net worth',
+]
+const GOAL_SAVING_FOR_OPTIONS = [
+  'Emergency fund', 'House / down payment', 'Travel', 'Vehicle',
+  'Education / tuition', 'Starting a business', 'Retirement', 'General savings cushion',
+]
+const GOAL_INTENSITY_OPTIONS = ['Conservative', 'Balanced', 'Aggressive']
+
+function SettingsPage({ user, transactions, onClearTransactions, darkMode, onToggleDark, userGoals, onSaveGoals }) {
   const [displayName, setDisplayName]   = useState(user.user_metadata?.display_name || '')
   const [nameSaving, setNameSaving]     = useState(false)
   const [nameSaved, setNameSaved]       = useState(false)
   const [pwSent, setPwSent]             = useState(false)
   const [clearConfirm, setClearConfirm] = useState(false)
   const [clearing, setClearing]         = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [deleteInput, setDeleteInput]     = useState('')
+  const [deleting, setDeleting]           = useState(false)
+  const [deleteError, setDeleteError]     = useState(null)
+  const [goalPrimary, setGoalPrimary]     = useState(userGoals?.primary_goal || '')
+  const [goalSavingFor, setGoalSavingFor] = useState(userGoals?.savings_goal || '')
+  const [goalIntensity, setGoalIntensity] = useState(userGoals?.savings_intensity || '')
+  const [goalSaving, setGoalSaving]       = useState(false)
+  const [goalSaved, setGoalSaved]         = useState(false)
+  const [goalError, setGoalError]         = useState(null)
+
+  useEffect(() => {
+    setGoalPrimary(userGoals?.primary_goal || '')
+    setGoalSavingFor(userGoals?.savings_goal || '')
+    setGoalIntensity(userGoals?.savings_intensity || '')
+  }, [userGoals])
+
+  async function handleSaveGoals() {
+    if (!onSaveGoals) return
+    setGoalSaving(true)
+    setGoalSaved(false)
+    setGoalError(null)
+    try {
+      await onSaveGoals({
+        ...(userGoals || {}),
+        primary_goal:       goalPrimary   || null,
+        savings_goal:       goalSavingFor || null,
+        savings_intensity:  goalIntensity || null,
+        onboarding_completed: true,
+      })
+      setGoalSaved(true)
+    } catch {
+      setGoalError("We couldn't save your goals. Please try again.")
+    } finally {
+      setGoalSaving(false)
+    }
+  }
 
   async function handleSaveName() {
     if (!displayName.trim()) return
@@ -3617,6 +3700,37 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
     onClearTransactions()
     setClearing(false)
     setClearConfirm(false)
+  }
+
+  async function handleDeleteAccount() {
+    if (deleteInput !== 'DELETE') return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const { error: rpcError } = await supabase.rpc('delete_user')
+      if (rpcError) {
+        await Promise.all([
+          supabase.from('transactions').delete().eq('user_id', user.id),
+          supabase.from('category_memory').delete().eq('user_id', user.id),
+          supabase.from('fixed_costs').delete().eq('user_id', user.id),
+          supabase.from('salary_settings').delete().eq('user_id', user.id),
+          supabase.from('custom_tags').delete().eq('user_id', user.id),
+          supabase.from('user_goals').delete().eq('user_id', user.id),
+          supabase.from('user_preferences').delete().eq('user_id', user.id),
+        ])
+      }
+      ;[
+        `csvUploads_${user.id}`,
+        `budgr_salary_${user.id}`,
+        `budgr_goals_seen_${user.id}`,
+        `budgr_freqs_${user.id}`,
+        `budgr_forecast_${user.id}`,
+      ].forEach(k => { try { localStorage.removeItem(k) } catch {} })
+      await supabase.auth.signOut()
+    } catch {
+      setDeleteError('Something went wrong. Please try again or contact support@budgli.com.')
+      setDeleting(false)
+    }
   }
 
   function handleExport() {
@@ -3645,24 +3759,43 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
 
   const lbl = 'text-[11px] font-semibold uppercase tracking-[0.15em] mb-4 text-[#8896B0]'
 
+  const selectCls = 'w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#00C896] transition-colors bg-white'
+
   return (
     <div className="max-w-lg space-y-4">
 
-      {/* Appearance */}
+      {/* Financial Goals */}
       <div className="budgli-card rounded-xl p-6">
-        <p className={lbl}>Appearance</p>
-        <div className="flex items-center justify-between">
+        <p className={lbl}>Financial Goals</p>
+        <div className="space-y-4">
           <div>
-            <p className="text-sm font-medium text-gray-700">Dark Mode</p>
-            <p className="text-xs text-gray-400 mt-0.5">Switch between light and dark interface</p>
+            <label className="block text-xs text-gray-500 mb-1.5">Main Goal</label>
+            <select value={goalPrimary} onChange={e => { setGoalPrimary(e.target.value); setGoalSaved(false) }} className={selectCls}>
+              <option value="">— Not set —</option>
+              {GOAL_PRIMARY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
           </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5">Saving For</label>
+            <select value={goalSavingFor} onChange={e => { setGoalSavingFor(e.target.value); setGoalSaved(false) }} className={selectCls}>
+              <option value="">— Not set —</option>
+              {GOAL_SAVING_FOR_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5">Savings Approach</label>
+            <select value={goalIntensity} onChange={e => { setGoalIntensity(e.target.value); setGoalSaved(false) }} className={selectCls}>
+              <option value="">— Not set —</option>
+              {GOAL_INTENSITY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          {goalError && <p className="text-xs text-red-500">{goalError}</p>}
           <button
-            onClick={onToggleDark}
-            role="switch"
-            aria-checked={darkMode}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${darkMode ? 'bg-[#00C896]' : 'bg-gray-200'}`}
+            onClick={handleSaveGoals}
+            disabled={goalSaving}
+            className="px-4 py-2.5 rounded-lg text-xs font-medium bg-[#0D7377] text-white hover:bg-[#0b6268] transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] text-center"
           >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-1'}`} />
+            {goalSaving ? '…' : goalSaved ? 'Goals saved ✓' : 'Save goals'}
           </button>
         </div>
       </div>
@@ -3716,7 +3849,7 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
           <button
             onClick={handleSaveName}
             disabled={nameSaving || !displayName.trim()}
-            className="px-4 py-2.5 rounded-lg text-xs font-medium bg-[#1A1F2E] text-white hover:bg-[#2d3748] transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] text-center"
+            className="px-4 py-2.5 rounded-lg text-xs font-medium bg-[#0D7377] text-white hover:bg-[#0b6268] transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] text-center"
           >
             {nameSaving ? '…' : nameSaved ? 'Saved ✓' : 'Save'}
           </button>
@@ -3781,6 +3914,56 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
         </div>
       </div>
 
+      {/* Danger Zone */}
+      <div className="budgli-card rounded-xl p-6 border border-red-100">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.15em] mb-4 text-red-400">Danger Zone</p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-700">Delete Account</p>
+            <p className="text-xs text-gray-400 mt-0.5">Permanently removes your account and all data. This cannot be undone.</p>
+          </div>
+          {!deleteConfirm && (
+            <button
+              onClick={() => { setDeleteConfirm(true); setDeleteInput(''); setDeleteError(null) }}
+              className="shrink-0 px-4 py-2 rounded-lg text-xs font-medium bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition-colors"
+            >
+              Delete Account
+            </button>
+          )}
+        </div>
+        {deleteConfirm && (
+          <div className="mt-4 pt-4 border-t border-red-100 space-y-3">
+            <p className="text-xs text-gray-500 leading-relaxed">
+              This permanently deletes your Budgli account and all imported financial data — transactions, categories, salary settings, savings forecast, and goals. This cannot be undone. Type <span className="font-semibold text-red-500">DELETE</span> to confirm.
+            </p>
+            <input
+              type="text"
+              value={deleteInput}
+              onChange={e => setDeleteInput(e.target.value)}
+              placeholder="Type DELETE to confirm"
+              className="w-full border border-red-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-red-400 transition-colors placeholder-gray-300"
+            />
+            {deleteError && <p className="text-xs text-red-500">{deleteError}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteInput !== 'DELETE' || deleting}
+                className="px-4 py-2 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {deleting ? 'Deleting…' : 'Yes, delete my account'}
+              </button>
+              <button
+                onClick={() => { setDeleteConfirm(false); setDeleteInput(''); setDeleteError(null) }}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* About */}
       <div className="budgli-card rounded-xl p-6">
         <p className={lbl}>About</p>
@@ -3822,8 +4005,9 @@ function SettingsPage({ user, transactions, onClearTransactions, darkMode, onTog
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [user, setUser]       = useState(undefined)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser]             = useState(undefined)
+  const [loading, setLoading]       = useState(true)
+  const [passwordRecovery, setPasswordRecovery] = useState(false)
 
   const [activePage, setActivePage]         = useState('get-started')
   const [selectedMonth, setSelectedMonth]   = useState('01')
@@ -3893,6 +4077,13 @@ export default function App() {
       setUser(session?.user ?? null)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        // Do not treat a recovery session as a normal login.
+        // Hold the user in the ResetPasswordScreen until they set a new password.
+        setPasswordRecovery(true)
+        setUser(session?.user ?? null)
+        return
+      }
       if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
         setSalaries({})
         setTransactions([])
@@ -3904,6 +4095,10 @@ export default function App() {
         setCsvUploads([])
         setDedupKeyCache(new Set())
         dataLoadedFor.current = null
+      }
+      // Clear recovery flag on any normal SIGNED_IN or USER_UPDATED event
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        setPasswordRecovery(false)
       }
       setUser(session?.user ?? null)
     })
@@ -4724,6 +4919,7 @@ export default function App() {
 
   if (user === undefined || loading) return <LoadingSpinner />
   if (user === null) return <AuthScreen />
+  if (passwordRecovery) return <ResetPasswordScreen onDone={() => setPasswordRecovery(false)} />
 
   // Sidebar savings rate — recomputed from current month state, no extra API call
   const sidebarSavingsRate = (() => {
@@ -4742,6 +4938,13 @@ export default function App() {
     const totalSaved = leftover + savingsTotal
     return monthlyNet > 0 ? (totalSaved / monthlyNet) * 100 : null
   })()
+
+  const monthsWithData = new Set(
+    transactions
+      .map(t => yearMonthOf(t.date))
+      .filter(ym => ym && ym.startsWith(selectedYear))
+      .map(ym => ym.slice(5, 7))
+  )
 
   return (
     <div
@@ -5023,19 +5226,26 @@ export default function App() {
         {/* Month tabs — dashboard only */}
         {activePage === 'dashboard' && (
           <div className="bg-white border-b border-gray-100 px-4 md:px-6 flex gap-1 md:gap-4 shrink-0 overflow-x-auto no-scrollbar">
-            {MONTHS.map(m => (
-              <button
-                key={m.id}
-                onClick={() => setSelectedMonth(m.id)}
-                className={`py-3 px-1 md:px-0 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap shrink-0 ${
-                  selectedMonth === m.id
-                    ? 'border-[#00C896] text-[#1A1F2E]'
-                    : 'border-transparent text-gray-400 hover:text-gray-700 hover:border-gray-200'
-                }`}
-              >
-                {m.label.slice(0, 3)}
-              </button>
-            ))}
+            {MONTHS.map(m => {
+              const isSelected = selectedMonth === m.id
+              const hasData = monthsWithData.has(m.id)
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setSelectedMonth(m.id)}
+                  title={!hasData ? 'No data' : undefined}
+                  className={`py-3 px-1 md:px-0 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap shrink-0 ${
+                    isSelected
+                      ? 'border-[#00C896] text-[#1A1F2E]'
+                      : hasData
+                        ? 'border-transparent text-gray-400 hover:text-gray-700 hover:border-gray-200'
+                        : 'border-transparent text-gray-200 hover:text-gray-400'
+                  }`}
+                >
+                  {m.label.slice(0, 3)}
+                </button>
+              )
+            })}
           </div>
         )}
 
@@ -5066,6 +5276,7 @@ export default function App() {
               fixedOpen={dashFixedOpen}       setFixedOpen={setDashFixedOpen}
               savingsOpen={dashSavingsOpen}   setSavingsOpen={setDashSavingsOpen}
               userGoals={userGoals}
+              onNavigate={setActivePage}
             />
           )}
 
@@ -5318,6 +5529,7 @@ export default function App() {
               onToggleDark={toggleDarkMode}
               userGoals={userGoals}
               onUpdateGoals={() => setShowGoalOnboarding(true)}
+              onSaveGoals={saveUserGoals}
             />
           )}
 

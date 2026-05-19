@@ -20,7 +20,7 @@ function EyeClosed() {
 }
 
 /* Password field with show/hide toggle */
-function PasswordInput({ value, onChange, placeholder = '••••••••', autoComplete, className = '', extraClass = '' }) {
+function PasswordInput({ value, onChange, placeholder = '••••••••', autoComplete, className = '' }) {
   const [show, setShow] = useState(false)
   return (
     <div style={{ position: 'relative' }}>
@@ -31,7 +31,7 @@ function PasswordInput({ value, onChange, placeholder = '•••••••�
         required
         autoComplete={autoComplete}
         placeholder={placeholder}
-        className={className + ' ' + extraClass}
+        className={className}
         style={{ paddingRight: '2.75rem' }}
       />
       <button
@@ -82,16 +82,24 @@ const FEATURES = [
   },
 ]
 
-const inputBase = {
-  width: '100%',
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '12px',
-  padding: '12px 16px',
-  fontSize: '14px',
-  color: '#fff',
-  outline: 'none',
-  transition: 'border-color 0.15s',
+/* Maps raw Supabase error messages to user-friendly copy */
+function friendlyError(msg) {
+  if (!msg) return 'Something went wrong. Please try again.'
+  const m = msg.toLowerCase()
+  if (m.includes('invalid login') || m.includes('invalid credentials') || m.includes('email not confirmed')) {
+    return 'Incorrect email or password. Check your details and try again.'
+  }
+  if (m.includes('already registered') || m.includes('user already exists')) {
+    return 'An account with this email already exists. Try signing in instead.'
+  }
+  if (m.includes('rate limit') || m.includes('too many') || m.includes('exceeded')) {
+    return 'Too many attempts. Please wait a few minutes and try again.'
+  }
+  if (m.includes('network') || m.includes('fetch')) {
+    return 'Network error. Check your connection and try again.'
+  }
+  if (import.meta.env.DEV) return msg
+  return 'Something went wrong. Please try again.'
 }
 
 export default function AuthScreen() {
@@ -102,9 +110,12 @@ export default function AuthScreen() {
   const [confirm, setConfirm]   = useState('')
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
-  const [success, setSuccess]   = useState(false)  // signup verified / reset sent
+  const [success, setSuccess]   = useState(false)
+  const [resending, setResending]                   = useState(false)
+  const [resent, setResent]                         = useState(false)
+  const [resendError, setResendError]               = useState('')
+  const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState('')
 
-  // Fire once when the auth screen mounts (unauthenticated user sees the landing page)
   useEffect(() => { track('landing_page_view') }, [])
 
   function switchMode(next) {
@@ -114,6 +125,37 @@ export default function AuthScreen() {
     setSuccess(false)
     setPassword('')
     setConfirm('')
+    setResent(false)
+    setResendError('')
+    setPendingConfirmationEmail('')
+  }
+
+  async function handleResend() {
+    if (resending || !pendingConfirmationEmail) return
+    setResending(true)
+    setResendError('')
+    try {
+      const { error: err } = await supabase.auth.resend({
+        type: 'signup',
+        email: pendingConfirmationEmail,
+        options: { emailRedirectTo: window.location.origin },
+      })
+      if (err) {
+        if (import.meta.env.DEV) console.error('[resend]', err)
+        const m = err.message?.toLowerCase() ?? ''
+        if (m.includes('rate') || m.includes('too many') || m.includes('exceeded')) {
+          setResendError('Please wait a minute before requesting another email.')
+        } else if (m.includes('already confirmed') || m.includes('already registered')) {
+          setResendError('This email may already be confirmed. Try signing in.')
+        } else {
+          setResendError("We couldn't resend the confirmation email. Please try again.")
+        }
+      } else {
+        setResent(true)
+      }
+    } finally {
+      setResending(false)
+    }
   }
 
   async function handleSubmit(e) {
@@ -126,14 +168,7 @@ export default function AuthScreen() {
         const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: window.location.origin,
         })
-        if (err) {
-          const msg = err.message?.toLowerCase() ?? ''
-          if (msg.includes('rate limit') || msg.includes('too many') || msg.includes('exceeded')) {
-            setError('Too many reset requests. Please wait a few minutes, then try again — or check your spam folder for an email that may have already been sent.')
-          } else {
-            setError(err.message)
-          }
-        }
+        if (err) setError(friendlyError(err.message))
         else setSuccess(true)
       } finally {
         setLoading(false)
@@ -142,34 +177,38 @@ export default function AuthScreen() {
     }
 
     if (mode === 'signup') {
-      if (password !== confirm) { setError('Passwords do not match.'); return }
-      if (password.length < 6)  { setError('Password must be at least 6 characters.'); return }
+      if (password.length < 8)  { setError('Password must be at least 8 characters.'); return }
+      if (password !== confirm)  { setError('Passwords do not match.'); return }
     }
 
     setLoading(true)
     try {
       const { error: err } = mode === 'login'
         ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password })
-      if (err) setError(err.message)
-      else if (mode === 'signup') { track('signup_completed'); setSuccess(true) }
+        : await supabase.auth.signUp({
+            email,
+            password,
+            options: { emailRedirectTo: window.location.origin },
+          })
+      if (err) setError(friendlyError(err.message))
+      else if (mode === 'signup') { track('signup_completed'); setPendingConfirmationEmail(email); setSuccess(true) }
     } finally {
       setLoading(false)
     }
   }
 
-  async function handleGoogle() {
-    setError('')
-    const { error: err } = await supabase.auth.signInWithOAuth({ provider: 'google' })
-    if (err) setError(err.message)
-  }
+  // TODO: Re-enable Google OAuth in Phase 2 after Supabase provider and redirect URLs are fully tested.
+  // async function handleGoogle() {
+  //   setError('')
+  //   const { error: err } = await supabase.auth.signInWithOAuth({ provider: 'google' })
+  //   if (err) setError(err.message)
+  // }
 
   const inputClass = [
     'w-full text-sm text-white outline-none transition-all',
     'placeholder-white/25',
     'bg-white/[0.06] border border-white/10 rounded-xl px-4 py-3',
     'focus:border-[#00C896] focus:bg-white/[0.08]',
-    // suppress browser autofill overlay colour
     '[&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_rgba(15,52,96,0.9)]',
     '[&:-webkit-autofill]:[-webkit-text-fill-color:#fff]',
   ].join(' ')
@@ -289,7 +328,7 @@ export default function AuthScreen() {
             {mode === 'forgot' && success && (
               <SuccessCard
                 title="Check your email"
-                body={<>We sent a reset link to <span className="text-white/70">{email}</span>.</>}
+                body={<>If an account exists for <span className="text-white/70">{email}</span>, we'll send a reset link shortly.</>}
                 action={<button onClick={() => switchMode('login')} className="mt-5 text-xs text-[#00C896] hover:underline">Back to sign in</button>}
               />
             )}
@@ -297,9 +336,33 @@ export default function AuthScreen() {
             {/* ── Signup success ── */}
             {mode === 'signup' && success && (
               <SuccessCard
-                title="Check your email"
-                body={<>We sent a confirmation link to <span className="text-white/70">{email}</span>.</>}
-                action={<button onClick={() => switchMode('login')} className="mt-5 text-xs text-[#00C896] hover:underline">Back to sign in</button>}
+                title="Check your email to confirm your Budgli account"
+                body={<>We sent a confirmation link to <span className="text-white/70">{email}</span>. Open it to finish setting up your account.</>}
+                action={
+                  <div className="mt-5 space-y-3">
+                    {resent ? (
+                      <p className="text-xs text-[#00C896]">Confirmation email resent. Check your inbox.</p>
+                    ) : (
+                      <>
+                        <button
+                          onClick={handleResend}
+                          disabled={resending || !pendingConfirmationEmail}
+                          className="text-xs text-white/40 hover:text-[#00C896] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {resending ? 'Sending…' : 'Resend confirmation email'}
+                        </button>
+                        {resendError && (
+                          <p className="text-xs text-red-400">{resendError}</p>
+                        )}
+                      </>
+                    )}
+                    <div>
+                      <button onClick={() => switchMode('login')} className="text-xs text-[#00C896] hover:underline block">
+                        Back to sign in
+                      </button>
+                    </div>
+                  </div>
+                }
               />
             )}
 
@@ -313,26 +376,6 @@ export default function AuthScreen() {
                   <p className="text-white/40 text-sm">
                     {mode === 'login' ? 'Sign in to continue to your dashboard.' : 'Get started — it only takes a minute.'}
                   </p>
-                </div>
-
-                {/* Google OAuth */}
-                <button
-                  onClick={handleGoogle}
-                  className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-gray-800 text-sm font-semibold py-3 rounded-xl transition-colors mb-5 shadow-sm"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" style={{ pointerEvents: 'none', flexShrink: 0 }}>
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                  </svg>
-                  Continue with Google
-                </button>
-
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="flex-1 h-px bg-white/10" />
-                  <span className="text-white/25 text-xs">or</span>
-                  <div className="flex-1 h-px bg-white/10" />
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -413,7 +456,11 @@ export default function AuthScreen() {
 
           </div>
 
-          <p className="text-center text-white/20 text-[11px] mt-5">
+          {/* Trust copy */}
+          <p className="text-center text-white/20 text-[11px] mt-4 leading-relaxed max-w-sm mx-auto">
+            Budgli uses secure authentication through Supabase. Your CSV files are processed for import and are not stored as raw files.
+          </p>
+          <p className="text-center text-white/15 text-[11px] mt-2">
             By continuing you agree to our Terms of Service and Privacy Policy.
           </p>
         </div>
@@ -465,8 +512,8 @@ function SuccessCard({ title, body, action }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <p className="text-white font-semibold mb-1">{title}</p>
-      <p className="text-white/40 text-sm">{body}</p>
+      <p className="text-white font-semibold mb-2">{title}</p>
+      <p className="text-white/40 text-sm leading-relaxed">{body}</p>
       {action}
     </div>
   )

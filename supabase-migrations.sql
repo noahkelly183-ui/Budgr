@@ -193,3 +193,58 @@ alter table salary_settings
   drop constraint if exists salary_settings_user_id_year_key;
 alter table salary_settings
   add constraint salary_settings_user_id_year_key unique (user_id, year);
+
+
+-- ── delete_user() — hardened self-deletion RPC ────────────────
+-- Allows an authenticated user to permanently delete their own account
+-- and all associated data in a single atomic operation.
+--
+-- Security properties:
+--   SECURITY DEFINER  — runs as the function owner (postgres) so it can
+--                       DELETE from auth.users and bypass RLS where needed
+--   SET search_path   — prevents search_path injection attacks that could
+--                       shadow auth.uid() with a malicious function
+--   NULL guard        — rejects calls made without a valid session
+--   REVOKE / GRANT    — only the 'authenticated' role can execute this;
+--                       the default PUBLIC grant is removed
+--
+-- Table coverage (all user-specific tables as of this migration):
+--   transactions, category_memory, fixed_costs, salary_settings,
+--   custom_tags, user_goals, user_preferences
+--   beta_feedback rows are anonymized (user_id → NULL) rather than deleted
+--   to preserve product analytics without retaining personal linkage.
+--
+-- user_goals and user_preferences also have ON DELETE CASCADE on auth.users,
+-- but explicit deletes here run first to ensure no orphaned data.
+
+create or replace function public.delete_user()
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  _uid uuid := auth.uid();
+begin
+  if _uid is null then
+    raise exception 'delete_user: caller is not authenticated';
+  end if;
+
+  delete from public.transactions    where user_id = _uid;
+  delete from public.category_memory where user_id = _uid;
+  delete from public.fixed_costs      where user_id = _uid;
+  delete from public.salary_settings  where user_id = _uid;
+  delete from public.custom_tags       where user_id = _uid;
+  delete from public.user_preferences  where user_id = _uid;
+  delete from public.user_goals        where user_id = _uid;
+
+  -- Anonymize feedback rather than delete — severs PII linkage, keeps analytics
+  update public.beta_feedback set user_id = null where user_id = _uid;
+
+  -- Delete the auth record last; CASCADE cleans up any remaining FK references
+  delete from auth.users where id = _uid;
+end;
+$$;
+
+revoke all on function public.delete_user() from public;
+grant execute on function public.delete_user() to authenticated;
