@@ -94,29 +94,11 @@ const CARDS = [
   {
     icon: (
       <svg className="w-5 h-5 text-budgli-teal" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-      </svg>
-    ),
-    title: 'Raw CSV files are not stored',
-    description: 'CSV files are processed for import and are not stored as raw files.',
-  },
-  {
-    icon: (
-      <svg className="w-5 h-5 text-budgli-teal" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
       </svg>
     ),
     title: 'Delete your account at any time',
     description: 'Delete your account and all associated data from Settings — no email required.',
-  },
-  {
-    icon: (
-      <svg className="w-5 h-5 text-budgli-teal" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-      </svg>
-    ),
-    title: 'Secure email/password authentication',
-    description: 'Email confirmation and password reset flows built in from the start.',
   },
 ]
 
@@ -165,26 +147,18 @@ export default function Trust() {
           ))}
         </div>
 
-        {/* Mini UI panels — what the real product looks like for these controls */}
+        {/* Mini UI panel */}
         <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 gap-4"
+          className="max-w-md"
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-40px' }}
           transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div>
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2.5 px-1">
-              Account controls — in the real app
-            </p>
-            <SettingsPanel />
-          </div>
-          <div>
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2.5 px-1">
-              What happens to your CSV file
-            </p>
-            <ImportPanel />
-          </div>
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2.5 px-1">
+            What happens to your CSV file
+          </p>
+          <ImportPanel />
         </motion.div>
 
       </div>

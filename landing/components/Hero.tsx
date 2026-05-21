@@ -173,7 +173,7 @@ export default function Hero() {
           </h1>
 
           <p className="text-base sm:text-lg text-white/60 max-w-xl mx-auto leading-relaxed mb-8">
-            Budgli turns your transactions into a clean monthly report — what came in, what went out, what you saved, and where your money is heading.
+            Upload your bank CSV. Get a clean monthly income statement — income, expenses, savings, and where you&apos;re headed.
           </p>
 
           {/* CTAs */}
@@ -192,7 +192,6 @@ export default function Hero() {
             </a>
           </div>
 
-          <p className="text-xs text-white/35">Start with your email and your transactions.</p>
         </motion.div>
       </div>
 

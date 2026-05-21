@@ -264,25 +264,11 @@ const PILLARS = [
     visual: <IncomeMiniCard />,
   },
   {
-    id: 'spending-clarity',
-    eyebrow: 'Spending',
-    title: 'Spending Clarity',
-    body: 'Fixed vs. variable costs separated automatically. See where money goes by category — not just a raw list of transactions.',
-    visual: <SpendingMiniCard />,
-  },
-  {
     id: 'savings-forecast',
     eyebrow: 'Planning',
     title: 'Savings Forecast',
     body: 'Based on your real savings rate and current balance, Budgli projects where you will be in 1, 3, 5, 10, or 30 years.',
     visual: <ForecastMiniCard />,
-  },
-  {
-    id: 'monthly-performance',
-    eyebrow: 'Progress',
-    title: 'Monthly Performance',
-    body: 'A performance score based on your savings rate and spending ratio — one number that tells you whether your month was good or not.',
-    visual: <ScoreMiniCard />,
   },
 ];
 
@@ -300,7 +286,7 @@ export default function ProductPillars() {
             Everything you need to understand your money.
           </h2>
           <p className="text-white/50 text-base max-w-xl mx-auto leading-relaxed">
-            Four views. Each one answers a different question about your financial life.
+            Two views that explain your money at a glance.
           </p>
         </div>
 

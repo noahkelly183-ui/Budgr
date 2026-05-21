@@ -6,10 +6,8 @@ const APP_URL = 'https://www.budgli.com'
 
 const FEATURES = [
   'CSV transaction import',
-  'Monthly dashboard',
   'Personal income statement view',
   'Savings tracking',
-  'Year-over-year review',
   'Manual CSV mapper',
   'Privacy controls',
 ]

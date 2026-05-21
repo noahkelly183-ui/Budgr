@@ -17,18 +17,6 @@ const FAQS = [
     a: 'No. CSV files are processed for import and are not stored as raw files.',
   },
   {
-    q: 'What does Budgli show me?',
-    a: 'Budgli shows what you spent, what you saved, where your income went, and whether your financial life is improving.',
-  },
-  {
-    q: 'Is Budgli financial advice?',
-    a: 'No. Budgli helps organize and understand your financial information. It does not provide financial, investment, tax, or legal advice.',
-  },
-  {
-    q: 'Is Budgli free?',
-    a: 'Budgli is free during beta. Paid plans may be introduced later.',
-  },
-  {
     q: 'Can I delete my account?',
     a: 'Yes. You can delete your account and associated Budgli data from Settings.',
   },
