@@ -118,7 +118,7 @@ const STEPS = [
 
 export default function Simplicity() {
   return (
-    <section id="simplicity" className="py-20 px-6 bg-[#F7F8FA]">
+    <section id="simplicity" className="py-20 px-6 bg-budgli-navy">
       <div className="max-w-5xl mx-auto">
 
         <motion.div
@@ -131,10 +131,10 @@ export default function Simplicity() {
           <p className="text-[11px] font-semibold tracking-widest uppercase text-budgli-teal mb-4">
             Simple by design
           </p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-budgli-navy mb-4">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
             No complicated setup.<br className="hidden sm:block" /> Just clarity.
           </h2>
-          <p className="text-gray-500 text-base max-w-lg mx-auto leading-relaxed">
+          <p className="text-white/55 text-base max-w-lg mx-auto leading-relaxed">
             All you need is your email and a CSV from your bank. No account linking, no financial profile, no onboarding questions.
           </p>
         </motion.div>
