@@ -224,7 +224,7 @@ function SystemDiagram() {
 
 export default function FounderStory() {
   return (
-    <section className="py-20 px-6 bg-budgli-navy">
+    <section className="py-20 px-6 bg-[#0D7377]">
       <div className="max-w-5xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 16 }}

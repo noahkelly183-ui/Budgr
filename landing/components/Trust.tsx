@@ -106,7 +106,7 @@ const CARDS = [
 
 export default function Trust() {
   return (
-    <section className="py-20 px-6 bg-[#F8FAFC]">
+    <section className="py-20 px-6 bg-white">
       <div className="max-w-5xl mx-auto">
 
         <motion.div
