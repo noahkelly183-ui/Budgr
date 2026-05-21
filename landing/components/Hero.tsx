@@ -173,7 +173,7 @@ export default function Hero() {
           </h1>
 
           <p className="text-base sm:text-lg text-white/60 max-w-xl mx-auto leading-relaxed mb-8">
-            Upload transactions. See income, spending, savings, and performance in one clean report.
+            Upload your bank CSV. Get a clean monthly income statement — income, expenses, savings, and where you&apos;re headed.
           </p>
 
           {/* CTAs */}
