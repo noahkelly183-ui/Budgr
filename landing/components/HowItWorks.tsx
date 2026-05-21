@@ -151,8 +151,8 @@ const STEPS = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
       </svg>
     ),
-    title: 'Upload',
-    description: 'Export a CSV from your bank. RBC and CIBC parse automatically. A manual mapper handles any other format. No bank connection required.',
+    title: 'Upload transactions',
+    description: 'Add your bank CSV to start your monthly report. RBC and CIBC parse automatically. A manual mapper handles any other format.',
     visual: <UploadVisual />,
   },
   {
@@ -162,8 +162,8 @@ const STEPS = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3zM6 6h.008v.008H6V6z" />
       </svg>
     ),
-    title: 'Retag',
-    description: 'Transactions are categorized on import. Fix any that are wrong — fixed cost, variable, savings, or skip. Most months need only a handful of corrections.',
+    title: 'Review categories',
+    description: 'Clean up fixed costs, variable costs, and income. Transactions are categorized on import — most months need only a handful of corrections.',
     visual: <CategorizeVisual />,
   },
   {
@@ -173,8 +173,8 @@ const STEPS = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
       </svg>
     ),
-    title: 'Report',
-    description: 'Your data becomes a monthly income statement in seconds. Savings rate, performance score, and spending breakdown — all built automatically.',
+    title: 'Read your report',
+    description: 'See what you earned, spent, saved, and how the month performed. Income statement, savings rate, and spending breakdown — all built automatically.',
     visual: <ReportVisual />,
   },
 ]
@@ -197,7 +197,7 @@ export default function HowItWorks() {
             How it works
           </p>
           <h2 className="text-3xl sm:text-4xl font-bold text-budgli-navy mb-4">
-            Upload. Retag. Report.
+            Upload. Review. Read.
           </h2>
           <p className="text-gray-500 text-base max-w-lg mx-auto leading-relaxed">
             Three steps. No spreadsheet.
