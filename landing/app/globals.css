@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --budgli-teal: #0D7377;
+  --budgli-teal-dark: #0b6268;
+  --budgli-green: #00C896;
+  --budgli-navy: #1A1F2E;
+}
+
+html {
+  scroll-behavior: smooth;
+}
