@@ -19,15 +19,15 @@ export default function Home() {
       <main>
         <Hero />                {/* navy */}
         <Problem />             {/* white */}
-        <Simplicity />          {/* navy */}
-        <FounderStory />        {/* teal */}
-        <HowItWorks />          {/* white */}
+        <Simplicity />          {/* #F7F8FA */}
+        <FounderStory />        {/* #F8FAFC */}
+        <HowItWorks />          {/* #F7F8FA */}
         <ProductPillars />      {/* navy */}
-        <AccuracyPhilosophy />  {/* teal */}
-        <Trust />               {/* white */}
+        <AccuracyPhilosophy />  {/* white */}
+        <Trust />               {/* #F8FAFC */}
         <FinalCTA />            {/* navy */}
         <Pricing />             {/* white */}
-        <FAQ />                 {/* navy */}
+        <FAQ />                 {/* #F8FAFC */}
       </main>
       <Footer />                {/* navy */}
     </>

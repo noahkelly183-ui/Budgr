@@ -85,7 +85,7 @@ const PRINCIPLES = [
 
 export default function AccuracyPhilosophy() {
   return (
-    <section id="accuracy" className="py-20 px-6 bg-[#0D7377]">
+    <section id="accuracy" className="py-20 px-6 bg-white">
       <div className="max-w-5xl mx-auto">
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
@@ -97,13 +97,13 @@ export default function AccuracyPhilosophy() {
             viewport={{ once: true, margin: '-60px' }}
             transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
           >
-            <p className="text-[11px] font-semibold tracking-widest uppercase text-budgli-green mb-4">
+            <p className="text-[11px] font-semibold tracking-widest uppercase text-budgli-teal mb-4">
               Philosophy
             </p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-white leading-snug mb-5">
+            <h2 className="text-3xl sm:text-4xl font-bold text-budgli-navy leading-snug mb-5">
               Specific, not obsessive.
             </h2>
-            <p className="text-white/65 text-base leading-relaxed mb-8">
+            <p className="text-gray-500 text-base leading-relaxed mb-8">
               Budgli doesn&apos;t ask you to categorize every coffee. It shows the numbers that actually explain your month — net income, savings rate, and what you kept — in a form you can read in sixty seconds.
             </p>
 
@@ -119,8 +119,8 @@ export default function AccuracyPhilosophy() {
                 >
                   <div className="mt-0.5 w-1.5 h-1.5 rounded-full bg-budgli-green shrink-0 mt-2" />
                   <div>
-                    <p className="text-sm font-semibold text-white mb-0.5">{p.label}</p>
-                    <p className="text-sm text-white/60 leading-relaxed">{p.body}</p>
+                    <p className="text-sm font-semibold text-gray-900 mb-0.5">{p.label}</p>
+                    <p className="text-sm text-gray-500 leading-relaxed">{p.body}</p>
                   </div>
                 </motion.div>
               ))}
