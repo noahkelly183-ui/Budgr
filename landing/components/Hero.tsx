@@ -4,146 +4,98 @@ import { motion } from 'framer-motion'
 
 const APP_URL = 'https://www.budgli.com'
 
-function HeroDashboard() {
+/* ─────────────────────────────────────────────────────────────────────────────
+   Real-size dashboard preview — mirrors `src/components/MonthlyDashboard.jsx`
+   StatCards + ScoreCard at the SAME density as the live app.
+   No props — visitor sees a representative May 2026 snapshot.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function PreviewStatCards() {
   return (
-    <div className="w-full h-full bg-[#F7F8FA] p-3 overflow-hidden">
-      {/* Top row: 4 stat cards */}
-      <div className="grid grid-cols-4 gap-2">
-        <div className="bg-white rounded-lg border border-gray-200 px-2.5 py-2 shadow-sm">
-          <p style={{ fontSize: '8px' }} className="text-gray-400 leading-none mb-1">Net Income</p>
-          <p className="text-sm font-bold text-gray-900 leading-none">$4,083</p>
+    <div className="grid grid-cols-2 gap-4">
+      <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 shadow-sm">
+        <div className="flex items-center gap-2.5 mb-2">
+          <span className="w-7 h-7 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
+            <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+            </svg>
+          </span>
+          <span className="text-sm text-gray-700 font-medium">Total Spent</span>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-2.5 py-2 shadow-sm">
-          <p style={{ fontSize: '8px' }} className="text-gray-400 leading-none mb-1">Total Expenses</p>
-          <p className="text-sm font-bold text-gray-900 leading-none">$2,840</p>
-        </div>
-        <div className="bg-[#F0FDF9] rounded-lg border border-[#00C89630] px-2.5 py-2 shadow-sm">
-          <p style={{ fontSize: '8px', color: '#0D7377' }} className="leading-none mb-1">Net Saved</p>
-          <p className="text-sm font-bold leading-none" style={{ color: '#00C896' }}>$1,053</p>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-2.5 py-2 shadow-sm">
-          <p style={{ fontSize: '8px' }} className="text-gray-400 leading-none mb-1">Savings Rate</p>
-          <p className="text-sm font-bold leading-none" style={{ color: '#0D7377' }}>25.8%</p>
-        </div>
+        <p className="text-3xl font-extrabold text-gray-900 tabular-nums leading-tight tracking-tight">$2,840.00</p>
+        <p className="text-xs text-gray-400 mt-1.5">Money spent this month</p>
       </div>
 
-      {/* Bottom row */}
-      <div className="grid grid-cols-5 gap-2 pt-2">
-        {/* Income statement card */}
-        <div className="col-span-3 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm" style={{ fontSize: '9px' }}>
-          {/* Header */}
-          <div className="bg-gray-50 border-b border-gray-200 px-2.5 py-1.5 flex items-center justify-between">
-            <span className="font-semibold text-gray-700">May 2026</span>
-            <span className="text-gray-400">Income Statement</span>
-          </div>
-
-          {/* Net Income row */}
-          <div className="bg-[#F0FDF4] px-2.5 py-1 flex items-center justify-between">
-            <span className="text-gray-700">Net Income</span>
-            <span className="font-bold text-gray-900">$4,083</span>
-          </div>
-
-          <div className="border-t border-gray-200" />
-
-          {/* Fixed Costs */}
-          <div className="px-2.5 py-1 flex items-center justify-between">
-            <span className="text-gray-500">Fixed Costs</span>
-            <span className="text-gray-700">$2,078</span>
-          </div>
-
-          {/* Variable Spending */}
-          <div className="px-2.5 py-1 flex items-center justify-between">
-            <span className="text-gray-500">Variable Spending</span>
-            <span className="text-gray-700">$762</span>
-          </div>
-
-          {/* Total Expenses */}
-          <div className="border-t-2 border-gray-200 px-2.5 py-1 flex items-center justify-between">
-            <span className="font-bold text-gray-900">Total Expenses</span>
-            <span className="font-bold text-gray-900">$2,840</span>
-          </div>
-
-          <div className="border-t border-gray-200" />
-
-          {/* Savings rows */}
-          <div className="bg-[#F0FDF9] px-2.5 py-1 flex items-center justify-between" style={{ color: '#0D7377' }}>
-            <span>RRSP</span>
-            <span>$500</span>
-          </div>
-          <div className="bg-[#F0FDF9] px-2.5 py-1 flex items-center justify-between" style={{ color: '#0D7377' }}>
-            <span>Emergency Fund</span>
-            <span>$253</span>
-          </div>
-          <div className="bg-[#F0FDF9] px-2.5 py-1 flex items-center justify-between" style={{ color: '#0D7377' }}>
-            <span>TFSA</span>
-            <span>$300</span>
-          </div>
-
-          {/* Total Savings */}
-          <div className="bg-[#F0FDF9] px-2.5 py-1 flex items-center justify-between font-bold" style={{ color: '#0D7377' }}>
-            <span>Total Savings</span>
-            <span>$1,053</span>
-          </div>
-
-          {/* Savings Rate with progress bar */}
-          <div className="bg-[#F0FDF9] px-2.5 py-1.5 flex items-center justify-between gap-2">
-            <span style={{ color: '#0D7377' }}>Savings Rate</span>
-            <div className="flex items-center gap-1.5 flex-1 justify-end">
-              <div className="w-12 bg-gray-200 rounded-full h-1 overflow-hidden">
-                <div className="h-1 rounded-full bg-[#00C896]" style={{ width: '25.8%' }} />
-              </div>
-              <span className="font-bold" style={{ color: '#0D7377' }}>25.8%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Right column */}
-        <div className="col-span-2 flex flex-col gap-2">
-          {/* Card A: Where it went */}
-          <div className="bg-white rounded-lg border border-gray-200 p-2.5 shadow-sm">
-            <p style={{ fontSize: '8px' }} className="font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Where it went</p>
-            <div className="flex flex-col gap-1">
-              {[
-                { label: 'Housing', pct: 51, color: '#0D7377' },
-                { label: 'Groceries', pct: 18, color: '#22C55E' },
-                { label: 'Transport', pct: 11, color: '#F59E0B' },
-                { label: 'Dining', pct: 9, color: '#A855F7' },
-                { label: 'Subscriptions', pct: 7, color: '#3B82F6' },
-              ].map(({ label, pct, color }) => (
-                <div key={label} className="flex items-center gap-1.5">
-                  <div className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                  <span style={{ fontSize: '8px' }} className="text-gray-600 flex-1 truncate">{label}</span>
-                  <div className="w-12 bg-gray-100 rounded-full h-0.5 overflow-hidden">
-                    <div className="h-0.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-                  </div>
-                  <span style={{ fontSize: '8px' }} className="text-gray-400">{pct}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Card B: Savings Forecast */}
-          <div className="bg-white rounded-lg border border-gray-200 p-2.5 shadow-sm flex-1">
-            <p style={{ fontSize: '8px' }} className="font-semibold text-gray-400 uppercase tracking-wide mb-1">Savings Forecast</p>
-            <p className="text-lg font-bold leading-none mb-0.5" style={{ color: '#00C896' }}>$210k</p>
-            <p style={{ fontSize: '8px' }} className="text-gray-400 mb-1.5">projected at 10 years</p>
-            <svg viewBox="0 0 80 30" className="w-full" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="hero-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#00C896" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#00C896" stopOpacity="0.02" />
-                </linearGradient>
-              </defs>
-              <path d="M 0 28 C 20 26 40 20 60 10 L 80 2 L 80 30 L 0 30 Z" fill="url(#hero-grad)" />
-              <path d="M 0 28 C 20 26 40 20 60 10 L 80 2" stroke="#00C896" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-              <circle cx="80" cy="2" r="2" fill="#00C896" />
+      <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 shadow-sm">
+        <div className="flex items-center gap-2.5 mb-2">
+          <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+            style={{ backgroundColor: '#F0FDF9', border: '1px solid rgba(0,200,150,0.20)' }}>
+            <svg className="w-3.5 h-3.5" style={{ color: '#00C896' }} fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-          </div>
+          </span>
+          <span className="text-sm text-gray-700 font-medium">Amount Saved</span>
         </div>
+        <p className="text-3xl font-extrabold tabular-nums leading-tight tracking-tight" style={{ color: '#00C896' }}>$1,880.83</p>
+        <p className="text-xs text-gray-400 mt-1.5">Money saved this month</p>
       </div>
     </div>
   )
 }
+
+function PreviewScoreCard() {
+  const factors = [
+    { name: 'Savings Rate',         value: 48, max: 50 },
+    { name: 'Spending Consistency', value: 34, max: 40 },
+    { name: 'Clarity',              value: 10, max: 10 },
+  ]
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 shadow-sm">
+      <div className="flex items-center gap-6 mb-4">
+        <div className="flex items-baseline gap-0.5">
+          <span className="text-5xl font-black leading-none tabular-nums tracking-tight" style={{ color: '#00C896' }}>92</span>
+          <span className="text-base text-gray-400 font-medium">/100</span>
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+            <span>Monthly Score</span>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+          </div>
+          <div className="text-base font-bold text-gray-900">Outstanding</div>
+          <div className="text-xs text-gray-500 mt-0.5">Based on savings rate, spending consistency, and report clarity.</div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {factors.map(f => (
+          <div key={f.name} className="grid grid-cols-[140px_1fr_56px] items-center gap-3">
+            <div className="text-xs text-gray-700">{f.name}</div>
+            <div className="bg-gray-100 h-1.5 rounded-full overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${(f.value / f.max) * 100}%`, backgroundColor: '#00C896' }} />
+            </div>
+            <div className="text-xs text-gray-400 text-right tabular-nums">
+              <b className="text-gray-800 font-semibold">{f.value}</b>/{f.max}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function HeroDashboard() {
+  return (
+    <div className="w-full h-full bg-[#F7F8FA] p-6 sm:p-8 overflow-hidden">
+      <div className="max-w-[880px] mx-auto flex flex-col gap-4">
+        <PreviewStatCards />
+        <PreviewScoreCard />
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Hero section
+   ───────────────────────────────────────────────────────────────────────────── */
 
 export default function Hero() {
   return (
@@ -157,7 +109,6 @@ export default function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
         >
-          {/* Combined badge */}
           <div className="inline-flex items-center gap-2.5 bg-white/8 border border-white/12 rounded-full px-4 py-2 mb-7">
             <span className="w-1.5 h-1.5 rounded-full bg-budgli-green shrink-0" />
             <span className="text-xs font-medium text-white/70 tracking-wide">Free during beta</span>
@@ -173,10 +124,9 @@ export default function Hero() {
           </h1>
 
           <p className="text-base sm:text-lg text-white/60 max-w-xl mx-auto leading-relaxed mb-8">
-            Budgli turns your transactions into a clean monthly report — what came in, what went out, what you saved, and where your money is heading.
+            Upload transactions. See income, spending, savings, and performance in one clean report.
           </p>
 
-          {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <a
               href={APP_URL}
@@ -191,12 +141,10 @@ export default function Hero() {
               View demo
             </a>
           </div>
-
-          <p className="text-xs text-white/35">Start with your email and your transactions.</p>
         </motion.div>
       </div>
 
-      {/* Bottom: dashboard visual */}
+      {/* Bottom: dashboard visual — real app-card sizes */}
       <motion.div
         className="px-4 sm:px-8 pb-0"
         initial={{ opacity: 0, y: 32 }}
@@ -204,14 +152,12 @@ export default function Hero() {
         transition={{ duration: 0.7, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="max-w-6xl mx-auto">
-          {/* Browser chrome + glow wrapper */}
           <div className="relative">
             {/* Green glow behind the frame */}
             <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-3/4 h-24 bg-budgli-green/10 blur-3xl rounded-full pointer-events-none" />
 
             {/* Browser chrome frame */}
             <div className="relative rounded-t-2xl overflow-hidden border border-white/10 border-b-0 shadow-[0_-4px_60px_rgba(0,0,0,0.4),0_0_0_1px_rgba(255,255,255,0.04)]">
-              {/* Chrome bar */}
               <div className="bg-[#131C2F] border-b border-white/8 px-4 py-[11px] flex items-center gap-2 shrink-0">
                 <div className="flex gap-1.5 shrink-0">
                   <div className="w-2.5 h-2.5 rounded-full bg-white/15" />
@@ -228,14 +174,10 @@ export default function Hero() {
                 </div>
               </div>
 
-              {/* Dashboard area */}
-              <div className="relative h-[420px] sm:h-[460px] lg:h-[500px]">
-                <div className="w-full h-full pointer-events-none">
-                  <HeroDashboard />
-                </div>
-
+              <div className="relative">
+                <HeroDashboard />
                 {/* Bottom fade into navy */}
-                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-budgli-navy to-transparent pointer-events-none" />
+                <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-budgli-navy to-transparent pointer-events-none" />
               </div>
             </div>
           </div>

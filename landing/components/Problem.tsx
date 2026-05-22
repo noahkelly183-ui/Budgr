@@ -18,7 +18,7 @@ export default function Problem() {
           <p className="text-[11px] font-semibold tracking-widest uppercase text-[#0D7377] mb-4">
             The problem
           </p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#1A1F2E] mb-4">
+          <h2 className="text-3xl sm:text-4xl font-bold text-budgli-teal mb-4">
             Your bank shows activity. Budgli turns it into a report.
           </h2>
           <p className="text-gray-500 text-base max-w-xl mx-auto leading-relaxed">
