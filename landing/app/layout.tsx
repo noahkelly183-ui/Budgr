@@ -9,15 +9,11 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://budgli.com'),
+  metadataBase: new URL('https://landing.budgli.com'),
 
   title: 'Budgli — Your personal income statement',
   description:
     'Budgli turns your bank CSV into a clean monthly income statement. See what you earned, spent, and kept — no bank login required. Free during beta.',
-
-  icons: {
-    icon: '/logo.svg',
-  },
 
   openGraph: {
     title: 'Budgli — Your personal income statement',
