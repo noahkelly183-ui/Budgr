@@ -2,8 +2,6 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { Analytics, track } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 import { createPortal } from 'react-dom'
-import { Analytics } from '@vercel/analytics/react'
-import { SpeedInsights } from '@vercel/speed-insights/react'
 import { supabase } from './supabase.js'
 import { DEMO_TRANSACTIONS, DEMO_FIXED_COSTS, DEMO_SAVINGS_ENTRIES, DEMO_SALARY, DEMO_YEAR } from './data/demoData.js'
 import AuthScreen from './components/AuthScreen.jsx'
@@ -602,9 +600,11 @@ function CatIcon({ name, hex, size = 'w-4 h-4' }) {
 
 const CATS_SET = new Set(CATEGORIES)
 
-function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear, customTags, onTagCategory, onUntagCategory, onNavigate }) {
-  const [editingTag, setEditingTag] = useState(null)
-  const [tagInput, setTagInput]     = useState('')
+function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear, customTags, bucketColors, onTagCategory, onUntagCategory, onSaveBucketColors, onNavigate }) {
+  const [editingTag, setEditingTag]             = useState(null)
+  const [showNewBucketForm, setShowNewBucketForm] = useState(false)
+  const [newBucketName, setNewBucketName]       = useState('')
+  const [newBucketColor, setNewBucketColor]     = useState('#6366F1')
 
   const allDebitsAnn = transactions.filter(t =>
     t.type === 'debit' &&
@@ -624,17 +624,27 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
     varByCategory[cat] = (varByCategory[cat] || 0) + t.amount
   }
 
+  // Bucket helpers — defined early so filters below can use tagFor
+  const tagFor = cat => customTags.find(t => t.category === cat)?.tag
+  const tagGroupMap = {}
+  for (const { category, tag } of customTags) {
+    if (!tagGroupMap[tag]) tagGroupMap[tag] = []
+    tagGroupMap[tag].push(category)
+  }
+
+  // Spending groups: hide categories already assigned to a bucket
   const spendingGroups = CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(group => {
     const entries = group.cats
-      .filter(cat => varByCategory[cat] > 0)
+      .filter(cat => varByCategory[cat] > 0 && !tagFor(cat))
       .map(cat => [cat, varByCategory[cat]])
       .sort(([, a], [, b]) => b - a)
     const total = entries.reduce((s, [, v]) => s + v, 0)
     return { ...group, entries, total }
   }).filter(g => g.total > 0)
 
+  // Custom categories: not in standard set and not bucketed
   const customEntries = Object.entries(varByCategory)
-    .filter(([cat]) => !CATS_SET.has(cat))
+    .filter(([cat]) => !CATS_SET.has(cat) && !tagFor(cat))
     .sort(([, a], [, b]) => b - a)
   const customTotal = customEntries.reduce((s, [, v]) => s + v, 0)
 
@@ -647,31 +657,44 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
     .sort(([, a], [, b]) => b - a)
   const savingsYTD = savingsCatEntries.reduce((s, [, v]) => s + v, 0)
 
-  // Custom Tags card — group tagged categories by tag name
-  const tagFor = cat => customTags.find(t => t.category === cat)?.tag
-  const tagGroupMap = {}
-  for (const { category, tag } of customTags) {
-    if (!tagGroupMap[tag]) tagGroupMap[tag] = []
-    tagGroupMap[tag].push(category)
-  }
-  const customTagGroups = Object.entries(tagGroupMap)
-    .map(([tag, cats]) => ({
-      tag,
-      items: cats.map(cat => [cat, varByCategory[cat] || 0]).sort(([, a], [, b]) => b - a),
-    }))
-    .sort((a, b) => a.tag.localeCompare(b.tag))
-  const customTagsTotal = customTagGroups.reduce((s, g) => s + g.items.reduce((ss, [, v]) => ss + v, 0), 0)
+  const DEFAULT_BUCKET_NAMES = CATEGORY_GROUPS.filter(g => g.name !== 'Savings').map(g => g.name)
+  const DEFAULT_BUCKET_HEX   = Object.fromEntries(CATEGORY_GROUPS.map(g => [g.name, g.hex]))
 
-  function commitTag(category) {
-    const trimmed = tagInput.trim()
-    if (trimmed) onTagCategory(category, trimmed)
-    setEditingTag(null)
-    setTagInput('')
+  // All buckets available for assignment: defaults + custom (used in the dropdown)
+  const allBucketNames = [...new Set([
+    ...DEFAULT_BUCKET_NAMES,
+    ...Object.keys(tagGroupMap),
+    ...Object.keys(bucketColors),
+  ])].sort()
+
+  // Cards: default group cards only appear once items are assigned; custom buckets always show
+  const bucketCards = allBucketNames
+    .map(name => {
+      const cats  = tagGroupMap[name] || []
+      const items = cats.map(cat => [cat, varByCategory[cat] || 0]).sort(([, a], [, b]) => b - a)
+      const total = items.reduce((s, [, v]) => s + v, 0)
+      const hex   = bucketColors[name] ?? DEFAULT_BUCKET_HEX[name] ?? '#8B5CF6'
+      return { name, hex, items, total, isDefault: DEFAULT_BUCKET_NAMES.includes(name) }
+    })
+    .filter(b => !b.isDefault || b.items.length > 0)
+
+  function handleCreateBucket() {
+    const name = newBucketName.trim()
+    if (!name) return
+    onSaveBucketColors({ ...bucketColors, [name]: newBucketColor })
+    setShowNewBucketForm(false)
+    setNewBucketName('')
+    setNewBucketColor('#6366F1')
   }
 
-  // Build the card list: fixed costs + spending groups + custom tags + custom categories + savings
+  function handleDeleteBucket(bucketName) {
+    ;(tagGroupMap[bucketName] || []).forEach(cat => onUntagCategory(cat))
+    const { [bucketName]: _, ...rest } = bucketColors
+    onSaveBucketColors(rest)
+  }
+
   const noTxns = monthsWithData === 0
-  const cards = [
+  const mainCards = [
     {
       name: 'Fixed Costs',
       hex: '#6B7280',
@@ -687,12 +710,6 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
       total: g.total,
       taggable: true,
     })),
-    ...(customTagGroups.length > 0 ? [{
-      name: 'Custom Tags',
-      hex: '#8B5CF6',
-      groups: customTagGroups,
-      total: customTagsTotal,
-    }] : []),
     ...(customEntries.length > 0 ? [{
       name: 'Custom Categories',
       hex: '#8B5CF6',
@@ -704,7 +721,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
       name: 'Savings',
       hex: '#00C896',
       items: noTxns
-        ? Object.entries(savingsByCategory).map(([cat, monthly]) => [cat, monthly]).sort(([,a],[,b]) => b - a)
+        ? Object.entries(savingsByCategory).map(([cat, monthly]) => [cat, monthly]).sort(([, a], [, b]) => b - a)
         : savingsCatEntries,
       total: noTxns ? Object.values(savingsByCategory).reduce((s, v) => s + v, 0) : savingsYTD,
       totalLabel: noTxns ? '/mo' : 'YTD',
@@ -729,20 +746,129 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4">
-        <p className="text-sm font-semibold text-gray-800">Categories — {selectedYear} {noTxns ? '' : 'YTD'}</p>
-        {monthsWithData > 0
-          ? <span className="text-xs text-gray-400">({monthsWithData} mo)</span>
-          : <span className="text-xs text-gray-400">— showing monthly rates (no transactions yet)</span>
-        }
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-gray-800">Categories — {selectedYear} {noTxns ? '' : 'YTD'}</p>
+          {monthsWithData > 0
+            ? <span className="text-xs text-gray-400">({monthsWithData} mo)</span>
+            : <span className="text-xs text-gray-400">— showing monthly rates (no transactions yet)</span>
+          }
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowNewBucketForm(v => !v)}
+          className="flex items-center gap-1.5 text-xs font-medium text-[#0D7377] hover:text-[#0b5e61] transition-colors"
+        >
+          <span className="text-base leading-none">+</span>
+          New Bucket
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cards.map(card => (
-          <div key={card.name} className="budgli-card rounded-xl p-5 flex flex-col">
+      {/* New bucket form */}
+      {showNewBucketForm && (
+        <div className="budgli-card rounded-xl p-4 mb-4 flex items-center gap-3 flex-wrap">
+          <input
+            autoFocus
+            type="text"
+            value={newBucketName}
+            onChange={e => setNewBucketName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleCreateBucket(); if (e.key === 'Escape') setShowNewBucketForm(false) }}
+            placeholder="Bucket name"
+            className="flex-1 min-w-[8rem] text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-[#0D7377]"
+          />
+          <div className="flex items-center gap-2 shrink-0">
+            <label className="text-xs text-gray-500">Color</label>
+            <input
+              type="color"
+              value={newBucketColor}
+              onChange={e => setNewBucketColor(e.target.value)}
+              className="w-8 h-8 rounded cursor-pointer border border-gray-200 p-0.5"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleCreateBucket}
+            disabled={!newBucketName.trim()}
+            className="px-3 py-2 text-xs font-medium bg-[#0D7377] text-white rounded-lg disabled:opacity-40 hover:bg-[#0b5e61] transition-colors shrink-0"
+          >
+            Create
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowNewBucketForm(false)}
+            className="px-3 py-2 text-xs text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
-            {/* Card header */}
-            <div className="flex items-center justify-between mb-4">
+      {/* Bucket cards */}
+      {bucketCards.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {bucketCards.map(bucket => (
+            <div key={bucket.name} className="budgli-card rounded-xl p-5 flex flex-col h-72">
+              <div className="flex items-center justify-between mb-4 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: bucket.hex }} />
+                  <p className="text-sm font-semibold text-gray-800">{bucket.name}</p>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[11px] text-gray-400">{bucket.items.length} {bucket.items.length === 1 ? 'item' : 'items'}</span>
+                  {!bucket.isDefault && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteBucket(bucket.name)}
+                      className="text-[11px] text-gray-300 hover:text-red-400 transition-colors leading-none"
+                      title="Delete bucket"
+                    >✕</button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
+                {bucket.items.length === 0 ? (
+                  <p className="text-xs italic text-gray-400">No categories assigned yet</p>
+                ) : bucket.items.map(([label, amt]) => {
+                  const pct = bucket.total > 0 ? (amt / bucket.total) * 100 : 0
+                  return (
+                    <div key={label}>
+                      <div className="flex justify-between items-center text-xs mb-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
+                          <span className="text-gray-600 truncate">{label}</span>
+                          <button
+                            type="button"
+                            onClick={() => onUntagCategory(label)}
+                            className="text-[10px] text-gray-300 hover:text-red-400 transition-colors shrink-0"
+                            title="Remove from bucket"
+                          >×</button>
+                        </div>
+                        <span className="tabular-nums font-medium shrink-0 text-gray-800">{fmt(amt)}</span>
+                      </div>
+                      <div className="h-[3px] bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: bucket.hex }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="shrink-0 mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
+                <span className="text-xs text-gray-400">Total YTD</span>
+                <span className="text-sm font-semibold tabular-nums text-gray-900">{bucket.total > 0 ? fmt(bucket.total) : '—'}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Main spending cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {mainCards.map(card => (
+          <div key={card.name} className="budgli-card rounded-xl p-5 flex flex-col h-72">
+
+            <div className="flex items-center justify-between mb-4 shrink-0">
               <div className="flex items-center gap-2.5">
                 <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: card.hex + '22' }}>
                   <CatIcon name={card.name} hex={card.hex} />
@@ -750,84 +876,41 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
                 <p className="text-sm font-semibold text-gray-800">{card.name}</p>
               </div>
               <span className="text-[11px] text-gray-400">
-                {card.groups
-                  ? `${customTags.length} tagged`
-                  : `${card.items.length} ${card.items.length === 1 ? 'item' : 'items'}`}
+                {card.items.length} {card.items.length === 1 ? 'item' : 'items'}
               </span>
             </div>
 
-            {/* Category rows */}
-            <div className="space-y-3 flex-1">
-              {card.groups ? (
-                // Custom Tags card — grouped by tag name
-                card.groups.length > 0 ? card.groups.map(({ tag, items }) => (
-                  <div key={tag}>
-                    <p className="text-[10px] font-semibold text-purple-400 uppercase tracking-wider mb-2">{tag}</p>
-                    {items.map(([label, amt]) => {
-                      const pct = card.total > 0 ? (amt / card.total) * 100 : 0
-                      return (
-                        <div key={label} className="mb-2 last:mb-0">
-                          <div className="flex justify-between items-center text-xs mb-1.5">
-                            <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
-                              <span className="text-gray-600 truncate">{label}</span>
-                              <button
-                                type="button"
-                                onClick={() => onUntagCategory(label)}
-                                className="text-[10px] text-purple-300 hover:text-red-400 transition-colors shrink-0"
-                                title="Remove tag"
-                              >×</button>
-                            </div>
-                            <span className="tabular-nums font-medium shrink-0 text-gray-800">{fmt(amt)}</span>
-                          </div>
-                          <div className="h-[3px] bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: card.hex }} />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )) : (
-                  <p className="text-xs italic text-gray-400">No tagged categories yet</p>
-                )
-              ) : card.items.length > 0 ? card.items.map(([label, amt]) => {
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
+              {card.items.length > 0 ? card.items.map(([label, amt]) => {
                 const pct = card.total > 0 ? (amt / card.total) * 100 : 0
-                const existingTag = card.taggable ? tagFor(label) : null
                 return (
                   <div key={label}>
                     <div className="flex justify-between items-center text-xs mb-1.5">
                       <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
                         <span className="text-gray-600 truncate">{label}</span>
-                        {card.taggable && (
+                        {card.taggable && allBucketNames.length > 0 && (
                           editingTag === label ? (
-                            <form
-                              onSubmit={e => { e.preventDefault(); commitTag(label) }}
-                              className="flex items-center gap-1 shrink-0"
+                            <select
+                              autoFocus
+                              defaultValue=""
+                              onChange={e => {
+                                if (e.target.value) { onTagCategory(label, e.target.value); setEditingTag(null) }
+                              }}
+                              onBlur={() => setEditingTag(null)}
+                              className="text-[10px] border border-purple-300 rounded px-1 py-0.5 outline-none bg-white shrink-0 max-w-[7rem]"
                             >
-                              <input
-                                autoFocus
-                                value={tagInput}
-                                onChange={e => setTagInput(e.target.value)}
-                                onBlur={() => commitTag(label)}
-                                className="text-[10px] border border-purple-300 rounded px-1.5 py-0.5 w-20 outline-none focus:border-purple-500"
-                                placeholder="tag name"
-                              />
-                            </form>
-                          ) : existingTag ? (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-full shrink-0">
-                              {existingTag}
-                              <button
-                                type="button"
-                                onClick={() => onUntagCategory(label)}
-                                className="ml-0.5 text-purple-400 hover:text-purple-700 leading-none"
-                              >×</button>
-                            </span>
+                              <option value="" disabled>Move to…</option>
+                              {allBucketNames.map(name => (
+                                <option key={name} value={name}>{name}</option>
+                              ))}
+                            </select>
                           ) : (
                             <button
                               type="button"
-                              onClick={() => { setEditingTag(label); setTagInput('') }}
+                              onClick={() => setEditingTag(label)}
                               className="text-[10px] text-gray-300 hover:text-purple-400 transition-colors shrink-0"
-                              title="Add tag"
-                            >+ tag</button>
+                              title="Move to bucket"
+                            >→ bucket</button>
                           )
                         )}
                       </div>
@@ -846,8 +929,7 @@ function CategoriesPage({ transactions, fixedCosts, savingsEntries, selectedYear
               )}
             </div>
 
-            {/* Card footer */}
-            <div className="mt-auto pt-3 border-t border-gray-100 flex justify-between items-center">
+            <div className="shrink-0 mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
               <span className="text-xs text-gray-400">Total {card.totalLabel || 'YTD'}</span>
               <span className={`text-sm font-semibold tabular-nums ${card.accent ? 'text-[#00C896]' : 'text-gray-900'}`}>
                 {card.total > 0 ? fmt(card.total) : '—'}
@@ -1729,6 +1811,8 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
     : '#EF4444'
   const [scoreExpanded, setScoreExpanded] = useState(false)
   const [expandedVarCat, setExpandedVarCat] = useState(null)
+  const [savingsInsightOpen, setSavingsInsightOpen] = useState(false)
+  const [spikesInsightOpen, setSpikesInsightOpen] = useState(false)
   const monthlyInsight = monthlyScore !== null ? getMonthlyInsight(monthlyScore.score) : null
 
   // Personalised goal insight
@@ -1790,6 +1874,29 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
   }
   const bannerTopCat = Object.entries(bannerVarByCat).sort((a, b) => b[1] - a[1])[0]
 
+  const savingsInsightText = (() => {
+    if (savingsRate === null || monthlyNet <= 0) return null
+    const r = savingsRate.toFixed(0)
+    if (savingsRate >= 20) return `Your savings rate is ${r}% this month — excellent. You're keeping more than 1 in 5 dollars you earn.`
+    if (savingsRate >= 10) return `Your savings rate is ${r}% — below the 20% benchmark. You're heading in the right direction but there's meaningful room to grow.`
+    if (savingsRate > 0) return `Your savings rate is ${r}% — well below the 20% target. Look for ways to cut variable spending or increase income.`
+    return 'You spent more than you earned this month. Review your fixed and variable costs to find room to save.'
+  })()
+
+  const inlineTopSpike = (() => {
+    if (txnSpent === 0) return null
+    const varByCat = {}
+    for (const t of debits) {
+      const cat = t.category || 'Uncategorized'
+      varByCat[cat] = (varByCat[cat] || 0) + t.amount
+    }
+    const top = Object.entries(varByCat).sort((a, b) => b[1] - a[1])[0]
+    if (!top) return null
+    const [catName, catAmt] = top
+    const pct = Math.round((catAmt / txnSpent) * 100)
+    return `${catName} was your biggest variable expense at ${fmt(catAmt)} — ${pct}% of all variable spending this month.`
+  })()
+
   return (
     <div>
 
@@ -1804,6 +1911,29 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
           </div>
           <p className="font-black text-gray-900 tabular-nums leading-none mb-1.5" style={{ fontSize: '2rem', letterSpacing: '-0.03em' }}>{fmt(totalSpent)}</p>
           <p className="text-[11px] text-gray-400">How much money you spent this month</p>
+          {inlineTopSpike ? (
+            <div className="mt-3 pt-2.5 border-t border-gray-100">
+              <button
+                onClick={() => setSpikesInsightOpen(o => !o)}
+                className="flex w-full items-center justify-between text-[11px] text-gray-400 hover:text-gray-600 transition-colors focus:outline-none"
+              >
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-3 h-3 text-amber-400" />
+                  Spending spike
+                </span>
+                <svg className={`w-3 h-3 transition-transform duration-200 ${spikesInsightOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {spikesInsightOpen && (
+                <p className="mt-2 text-xs text-gray-500 leading-relaxed">{inlineTopSpike}</p>
+              )}
+            </div>
+          ) : txnSpent === 0 ? (
+            <div className="mt-3 pt-2.5 border-t border-gray-100">
+              <p className="text-[11px] text-gray-300 italic">Add more transactions to unlock this insight.</p>
+            </div>
+          ) : null}
         </div>
 
         <div className="budgli-card rounded-xl p-4">
@@ -1817,6 +1947,29 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
             {fmt(totalSavings)}
           </p>
           <p className="text-[11px] text-gray-400">How much money you saved this month</p>
+          {savingsInsightText ? (
+            <div className="mt-3 pt-2.5 border-t border-gray-100">
+              <button
+                onClick={() => setSavingsInsightOpen(o => !o)}
+                className="flex w-full items-center justify-between text-[11px] text-gray-400 hover:text-gray-600 transition-colors focus:outline-none"
+              >
+                <span className="flex items-center gap-1.5">
+                  <PiggyBank className="w-3 h-3 text-[#00C896]" />
+                  Savings insight
+                </span>
+                <svg className={`w-3 h-3 transition-transform duration-200 ${savingsInsightOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {savingsInsightOpen && (
+                <p className="mt-2 text-xs text-gray-500 leading-relaxed">{savingsInsightText}</p>
+              )}
+            </div>
+          ) : monthlyNet === 0 ? (
+            <div className="mt-3 pt-2.5 border-t border-gray-100">
+              <p className="text-[11px] text-gray-300 italic">Add more transactions to unlock this insight.</p>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -2107,18 +2260,6 @@ function MonthlyDashboard({ txns, selectedMonth, selectedYear, setCategory, sala
         )
       })()}
 
-      <AnalysisSection
-        txns={txns}
-        selectedMonth={selectedMonth}
-        selectedYear={selectedYear}
-        monthlyNet={monthlyNet}
-        txnSpent={txnSpent}
-        fixedMonthlyTotal={fixedMonthlyTotal}
-        totalSavings={totalSavings}
-        savingsRate={savingsRate}
-        savingsEntriesTotal={savingsEntriesTotal}
-        debits={debits}
-      />
 
     </div>
   )
@@ -4020,6 +4161,7 @@ export default function App() {
   const [fixedCosts, setFixedCosts]         = useState([])
   const [savingsEntries, setSavingsEntries] = useState([])
   const [customTags, setCustomTags]         = useState([])
+  const [bucketColors, setBucketColors]     = useState({})
   const [dedupKeyCache, setDedupKeyCache]   = useState(new Set())
   const [csvUploads, setCsvUploads]         = useState([])
   const [uploadHistoryOpen, setUploadHistoryOpen] = useState(true)
@@ -4129,13 +4271,14 @@ export default function App() {
     async function loadData() {
       setLoading(true)
       try {
-        const [txnRes, memRes, fixedRes, salaryRes, tagsRes, goalsRes] = await Promise.all([
+        const [txnRes, memRes, fixedRes, salaryRes, tagsRes, goalsRes, prefsRes] = await Promise.all([
           supabase.from('transactions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
           supabase.from('category_memory').select('*').eq('user_id', user.id),
           supabase.from('fixed_costs').select('*').eq('user_id', user.id),
           supabase.from('salary_settings').select('*').eq('user_id', user.id),
           supabase.from('custom_tags').select('*').eq('user_id', user.id),
           supabase.from('user_goals').select('*').eq('user_id', user.id).maybeSingle(),
+          supabase.from('user_preferences').select('bucket_config').eq('user_id', user.id).maybeSingle(),
         ])
         const storedUploads = JSON.parse(localStorage.getItem(`csvUploads_${user.id}`) || '[]')
         setCsvUploads(storedUploads)
@@ -4178,6 +4321,10 @@ export default function App() {
 
         if (tagsRes.data) {
           setCustomTags(tagsRes.data.map(r => ({ id: r.id, category: r.category, tag: r.tag })))
+        }
+
+        if (prefsRes.data?.bucket_config) {
+          setBucketColors(prefsRes.data.bucket_config)
         }
 
         {
@@ -4593,6 +4740,15 @@ export default function App() {
     setCustomTags(prev => prev.filter(t => t.category !== category))
   }
 
+  async function saveBucketColors(colors) {
+    setBucketColors(colors)
+    if (isDemoMode || !user) return
+    supabase
+      .from('user_preferences')
+      .upsert({ user_id: user.id, bucket_config: colors }, { onConflict: 'user_id' })
+      .then(({ error }) => { if (error) console.error('[budgr] saveBucketColors failed:', error.message) })
+  }
+
 
   // Stage 1: parse, deduplicate, and categorise — stops before inserting.
   // Shared dedup + category-fallback logic used by both handleFile and handleManualMapping.
@@ -4994,12 +5150,8 @@ export default function App() {
           <aside className="relative w-72 max-w-[85vw] bg-[#0F1E33] flex flex-col h-full shadow-2xl">
             <div className="px-5 py-5 border-b border-white/[0.07] flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg,#00C896,#0D9488)' }}>
-                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2.2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <span className="text-white font-bold text-base tracking-tight">budgli</span>
+                <img src="/logo.svg" alt="Budgli" className="w-7 h-7 shrink-0" />
+                <span className="text-white font-bold text-base tracking-tight">Budgli</span>
               </div>
               <button onClick={() => setMobileNavOpen(false)} className="text-white/40 hover:text-white/80 p-1">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -5067,12 +5219,8 @@ export default function App() {
       <aside className="hidden md:flex w-56 bg-[#0F1E33] flex-col shrink-0">
         <div className="px-5 py-5 border-b border-white/[0.07]">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg,#00C896,#0D9488)' }}>
-              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2.2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <span className="text-white font-bold text-base tracking-tight">budgli</span>
+            <img src="/logo.svg" alt="Budgli" className="w-7 h-7 shrink-0" />
+            <span className="text-white font-bold text-base tracking-tight">Budgli</span>
           </div>
         </div>
 
@@ -5463,8 +5611,10 @@ export default function App() {
               savingsEntries={getActiveForMonth(savingsEntries, selectedYear, selectedMonth)}
               selectedYear={selectedYear}
               customTags={customTags}
+              bucketColors={bucketColors}
               onTagCategory={addCustomTag}
               onUntagCategory={removeCustomTag}
+              onSaveBucketColors={saveBucketColors}
               onNavigate={setActivePage}
             />
           )}

@@ -159,12 +159,15 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
   const [breakdownOpen, setBreakdownOpen] = useState(false)
   const [editingContrib, setEditingContrib] = useState(false)
   const [contribDraft,   setContribDraft]   = useState('')
+  const [manualAccounts,    setManualAccounts]    = useState([])
+  const [addingManualAcct,  setAddingManualAcct]  = useState(false)
+  const [newManualAcct,     setNewManualAcct]     = useState({ name: '', balance: '', monthly: '', rate: '' })
 
   const breakdownRef    = useRef(null)
   const saveReadyRef    = useRef(false)
   const supabaseSaveTimer = useRef(null)
-  const latestStateRef  = useRef({ balances, rateOverrides, contribAdj, goals })
-  useEffect(() => { latestStateRef.current = { balances, rateOverrides, contribAdj, goals } })
+  const latestStateRef  = useRef({ balances, rateOverrides, contribAdj, goals, manualAccounts })
+  useEffect(() => { latestStateRef.current = { balances, rateOverrides, contribAdj, goals, manualAccounts } })
 
   useEffect(() => {
     saveReadyRef.current = false
@@ -172,10 +175,13 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
     try {
       const s = JSON.parse(localStorage.getItem(storageKey) || '{}')
       lsTs = s._ts ?? 0
-      if (s.balances)                  setBalances(s.balances)
-      if (s.rateOverrides)             setRateOverrides(s.rateOverrides)
-      if (s.contribAdj !== undefined)  setContribAdj(s.contribAdj)
-      if (s.goals)                     setGoals(s.goals)
+      if (s.balances)               setBalances(s.balances)
+      if (s.rateOverrides)          setRateOverrides(s.rateOverrides)
+      if (s.contribAdj !== undefined) setContribAdj(s.contribAdj)
+      if (s.goals)                  setGoals(s.goals)
+      if (s.manualAccounts)         setManualAccounts(s.manualAccounts)
+      else if (s.additionalBalance > 0)
+        setManualAccounts([{ id: 'legacy', name: 'Additional savings', balance: s.additionalBalance, rate: 2 }])
     } catch {}
 
     if (!isDemoMode && user?.id) {
@@ -188,10 +194,13 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
           if (error || !data?.forecast_state) return
           if (lsTs > Date.now() - 30_000) return
           const db = data.forecast_state
-          if (db.balances)                  setBalances(db.balances)
-          if (db.rateOverrides)             setRateOverrides(db.rateOverrides)
-          if (db.contribAdj !== undefined)  setContribAdj(db.contribAdj)
-          if (db.goals)                     setGoals(db.goals)
+          if (db.balances)               setBalances(db.balances)
+          if (db.rateOverrides)          setRateOverrides(db.rateOverrides)
+          if (db.contribAdj !== undefined) setContribAdj(db.contribAdj)
+          if (db.goals)                  setGoals(db.goals)
+          if (db.manualAccounts)         setManualAccounts(db.manualAccounts)
+          else if (db.additionalBalance > 0)
+            setManualAccounts([{ id: 'legacy', name: 'Additional savings', balance: db.additionalBalance, rate: 2 }])
         })
     }
 
@@ -207,7 +216,7 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
       supabase
         .from('user_preferences')
         .upsert(
-          { user_id: user.id, forecast_state: { balances: s.balances, rateOverrides: s.rateOverrides, contribAdj: s.contribAdj, goals: s.goals } },
+          { user_id: user.id, forecast_state: { balances: s.balances, rateOverrides: s.rateOverrides, contribAdj: s.contribAdj, goals: s.goals, manualAccounts: s.manualAccounts } },
           { onConflict: 'user_id' }
         )
     }
@@ -217,7 +226,7 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
   useEffect(() => {
     if (!saveReadyRef.current) return
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ balances, rateOverrides, contribAdj, goals, _ts: Date.now() }))
+      localStorage.setItem(storageKey, JSON.stringify({ balances, rateOverrides, contribAdj, goals, manualAccounts, _ts: Date.now() }))
     } catch {}
     if (!isDemoMode && user?.id) {
       clearTimeout(supabaseSaveTimer.current)
@@ -225,13 +234,13 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
         supabase
           .from('user_preferences')
           .upsert(
-            { user_id: user.id, forecast_state: { balances, rateOverrides, contribAdj, goals } },
+            { user_id: user.id, forecast_state: { balances, rateOverrides, contribAdj, goals, manualAccounts } },
             { onConflict: 'user_id' }
           )
           .then(({ error }) => { if (error) console.error('[forecast] save failed:', error.message) })
       }, 1000)
     }
-  }, [storageKey, balances, rateOverrides, contribAdj, goals])
+  }, [storageKey, balances, rateOverrides, contribAdj, goals, manualAccounts])
 
   // ── derived values ────────────────────────────────────────────────────────
 
@@ -246,15 +255,22 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
   function effectiveRate(acc, sc)   { return scenarioRate(acc.category, sc, acc.rateOverride) }
   function effectiveMonthly(acc)    { return Math.max(0, acc.monthly + adjPerAccount) }
   function projectAcc(acc, sc, yrs) { return project(acc.balance, effectiveMonthly(acc), effectiveRate(acc, sc), yrs * 12) }
-  function projectTotal(sc, yrs = horizon) { return accounts.reduce((s, a) => s + projectAcc(a, sc, yrs), 0) }
+  function projectTotal(sc, yrs = horizon) {
+    const tracked = accounts.reduce((s, a) => s + projectAcc(a, sc, yrs), 0)
+    const manual  = manualAccounts.reduce((s, a) => s + project(a.balance, a.monthly || 0, scenarioRate('savings', sc, a.rate), yrs * 12), 0)
+    return tracked + manual
+  }
 
-  const totalBalance  = accounts.reduce((s, a) => s + a.balance, 0)
+  const totalBalance          = accounts.reduce((s, a) => s + a.balance, 0)
+  const manualBalance         = manualAccounts.reduce((s, a) => s + a.balance, 0)
+  const effectiveTotalBalance = totalBalance + manualBalance
   const baseMonthly   = accounts.reduce((s, a) => s + a.monthly, 0)
   const totalMonthly  = Math.max(0, baseMonthly + contribAdj)
+  const manualMonthly = manualAccounts.reduce((s, a) => s + (a.monthly || 0), 0)
   const totalAnnual   = totalMonthly * 12
   const baseProjected = projectTotal('base')
-  const growth        = baseProjected - totalBalance - totalMonthly * 12 * horizon
-  const anyBalanceSet = accounts.some(a => a.balance > 0)
+  const growth        = baseProjected - effectiveTotalBalance - totalMonthly * 12 * horizon
+  const anyBalanceSet = accounts.some(a => a.balance > 0) || manualAccounts.some(a => a.balance > 0)
 
   const chartCheckpoints = [0, 1, 2, 3, 5, 10, 15, 20, 25, 30]
     .filter(y => y <= horizon)
@@ -275,7 +291,7 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
     s + project(a.balance, Math.max(0, a.monthly + adjPerAccount + 100 / n), effectiveRate(a, 'base'), horizon * 12), 0)
   const boostPct    = baseProjected > 0 ? (boosted - baseProjected) / baseProjected : 0
   const compoundPct = baseProjected > 0 ? Math.max(0, growth) / baseProjected : 0
-  const multiplier  = totalBalance > 0 ? baseProjected / totalBalance : 0
+  const multiplier  = effectiveTotalBalance > 0 ? baseProjected / effectiveTotalBalance : 0
 
   let insight = ''
   if (boostPct > 0.05 && totalMonthly > 0) {
@@ -303,7 +319,7 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
     if (returns >= contributions && breakevenYear === null) breakevenYear = d.year
   }
 
-  const yMin = totalBalance > 0 ? Math.floor(totalBalance * 0.9 / 1000) * 1000 : 0
+  const yMin = effectiveTotalBalance > 0 ? Math.floor(effectiveTotalBalance * 0.9 / 1000) * 1000 : 0
 
   // ── goal helpers ──────────────────────────────────────────────────────────
 
@@ -311,13 +327,13 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
     const now      = Date.now()
     const deadline = goal.targetDate ? new Date(goal.targetDate + 'T00:00:00').getTime() : null
 
-    if (totalBalance >= goal.target) return { state: 'reached' }
+    if (effectiveTotalBalance >= goal.target) return { state: 'reached' }
     if (deadline && deadline < now)  return { state: 'expired', expiredDate: new Date(deadline) }
     if (!deadline)                   return { state: 'on-track', moLeft: null, required: null }
 
     const moLeft   = Math.max(0, Math.round((deadline - now) / (1000 * 60 * 60 * 24 * 30.44)))
     const r        = defaultRate('RRSP') / 100 / 12
-    const required = pmt(r, moLeft, totalBalance, goal.target)
+    const required = pmt(r, moLeft, effectiveTotalBalance, goal.target)
 
     if (required <= 0)              return { state: 'on-track', moLeft, required }
     if (required > totalMonthly)    return { state: 'behind',   moLeft, required }
@@ -349,6 +365,31 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
     latestStateRef.current = { ...latestStateRef.current, goals: next }
     setGoals(next)
     setEditingGoalId(null)
+  }
+
+  function handleAddManualAcct() {
+    const name    = newManualAcct.name.trim()
+    const balance = parseFloat(String(newManualAcct.balance).replace(/,/g, '')) || 0
+    const monthly = parseFloat(String(newManualAcct.monthly).replace(/,/g, '')) || 0
+    const rate    = parseFloat(String(newManualAcct.rate)) || 2
+    if (!name) return
+    const next = [...manualAccounts, { id: Date.now().toString(), name, balance, monthly, rate }]
+    latestStateRef.current = { ...latestStateRef.current, manualAccounts: next }
+    setManualAccounts(next)
+    setNewManualAcct({ name: '', balance: '', monthly: '', rate: '' })
+    setAddingManualAcct(false)
+  }
+
+  function updateManualAcct(id, field, value) {
+    const next = manualAccounts.map(a => a.id === id ? { ...a, [field]: value } : a)
+    latestStateRef.current = { ...latestStateRef.current, manualAccounts: next }
+    setManualAccounts(next)
+  }
+
+  function removeManualAcct(id) {
+    const next = manualAccounts.filter(a => a.id !== id)
+    latestStateRef.current = { ...latestStateRef.current, manualAccounts: next }
+    setManualAccounts(next)
   }
 
   // ── hero animated value ───────────────────────────────────────────────────
@@ -393,8 +434,8 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
           {fmtW(animatedProjected)}
         </p>
         <p className="text-base text-gray-500 mt-4">
-          {totalBalance > 0 && baseProjected > totalBalance
-            ? `At your current rate over ${horizon} year${horizon !== 1 ? 's' : ''} — that's ${(baseProjected / totalBalance).toFixed(1)}× your savings today.`
+          {effectiveTotalBalance > 0 && baseProjected > effectiveTotalBalance
+            ? `At your current rate over ${horizon} year${horizon !== 1 ? 's' : ''} — that's ${(baseProjected / effectiveTotalBalance).toFixed(1)}× your savings today.`
             : `At your current rate over ${horizon} year${horizon !== 1 ? 's' : ''}.`
           }
         </p>
@@ -482,23 +523,19 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
           </div>
         </div>
 
-        {/* Lever 3: Current Balance */}
+        {/* Lever 3: Current Balance — display only; editing is in Edit Accounts below */}
         <div className="flex-1 p-6">
           <p className="text-xs uppercase tracking-widest text-gray-400 mb-3">CURRENT BALANCE</p>
-          <button
-            onClick={() => { setBreakdownOpen(true); setTimeout(() => breakdownRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}
-            aria-label="Current total balance — click to edit account breakdown"
-            className="text-2xl font-semibold text-gray-900 hover:text-emerald-600 transition-colors text-left focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 rounded"
-          >
-            ${Math.round(totalBalance).toLocaleString('en-US')}
-          </button>
-          <p className="text-xs text-gray-400 mt-2">
-            Across {accounts.length} account{accounts.length !== 1 ? 's' : ''} —{' '}
+          <p className="text-2xl font-semibold text-gray-900 tabular-nums">
+            ${Math.round(effectiveTotalBalance).toLocaleString('en-US')}
+          </p>
+          <p className="text-xs text-gray-400 mt-2.5">
+            {accounts.length + manualAccounts.length} account{accounts.length + manualAccounts.length !== 1 ? 's' : ''} ·{' '}
             <button
               onClick={() => { setBreakdownOpen(true); setTimeout(() => breakdownRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}
-              className="text-emerald-600 hover:underline focus:outline-none"
+              className="underline hover:text-emerald-600 transition-colors focus:outline-none"
             >
-              edit breakdown ↓
+              Edit accounts ↓
             </button>
           </p>
         </div>
@@ -657,19 +694,152 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
                         </tr>
                       )
                     })}
+                    {manualAccounts.map(ma => (
+                      <tr key={ma.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors bg-emerald-50/20">
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={ma.name}
+                              onChange={e => updateManualAcct(ma.id, 'name', e.target.value)}
+                              className="text-sm font-medium text-gray-800 bg-transparent border-b border-dashed border-gray-200 outline-none focus:border-emerald-500 min-w-0 flex-1"
+                            />
+                            <button
+                              onClick={() => removeManualAcct(ma.id)}
+                              className="text-[10px] text-gray-300 hover:text-red-400 transition-colors focus:outline-none shrink-0"
+                              title="Remove account"
+                            >✕</button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <InlineEdit
+                            value={ma.balance}
+                            prefix="$"
+                            isBalance
+                            onSave={v => updateManualAcct(ma.id, 'balance', v)}
+                            className="text-gray-800 font-medium"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <InlineEdit
+                            value={ma.monthly || 0}
+                            prefix="$"
+                            isBalance
+                            onSave={v => updateManualAcct(ma.id, 'monthly', v)}
+                            className="text-gray-700 font-medium"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-500 tabular-nums text-xs">{fmt((ma.monthly || 0) * 12)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <InlineEdit
+                            value={ma.rate}
+                            suffix="%"
+                            onSave={v => updateManualAcct(ma.id, 'rate', v)}
+                            className="text-gray-500"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-emerald-600 tabular-nums">
+                          {fmt(ma.balance * Math.pow(1 + scenarioRate('savings', 'base', ma.rate) / 100, horizon))}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-gray-50 border-t border-gray-100">
+                    <tr className="bg-gray-50 border-t border-gray-200">
                       <td className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800 tabular-nums">{fmt(totalBalance)}</td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800 tabular-nums">{fmt(totalMonthly)}</td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-600 tabular-nums">{fmt(totalAnnual)}</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800 tabular-nums">{fmt(effectiveTotalBalance)}</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800 tabular-nums">{fmt(totalMonthly + manualMonthly)}</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-600 tabular-nums">{fmt((totalMonthly + manualMonthly) * 12)}</td>
                       <td className="px-4 py-3" />
                       <td className="px-4 py-3 text-right text-sm font-bold text-emerald-600 tabular-nums">{fmt(projectTotal('base'))}</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
+
+              {/* Add manual account */}
+              {addingManualAcct ? (
+                <div className="px-4 py-3 border-t border-gray-100 bg-emerald-50/30 flex items-end gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[8rem]">
+                    <label className="block text-[10px] text-gray-400 mb-1">Name</label>
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newManualAcct.name}
+                      onChange={e => setNewManualAcct(a => ({ ...a, name: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') handleAddManualAcct(); if (e.key === 'Escape') setAddingManualAcct(false) }}
+                      placeholder="e.g. Home equity"
+                      className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="w-32">
+                    <label className="block text-[10px] text-gray-400 mb-1">Balance</label>
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-emerald-500">
+                      <span className="px-2 py-1.5 bg-gray-50 text-gray-400 text-xs border-r border-gray-200 select-none">$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={newManualAcct.balance}
+                        onChange={e => setNewManualAcct(a => ({ ...a, balance: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') handleAddManualAcct(); if (e.key === 'Escape') setAddingManualAcct(false) }}
+                        placeholder="0"
+                        className="flex-1 px-2 py-1.5 text-sm outline-none w-0"
+                      />
+                    </div>
+                  </div>
+                  <div className="w-32">
+                    <label className="block text-[10px] text-gray-400 mb-1">/Month</label>
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-emerald-500">
+                      <span className="px-2 py-1.5 bg-gray-50 text-gray-400 text-xs border-r border-gray-200 select-none">$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={newManualAcct.monthly}
+                        onChange={e => setNewManualAcct(a => ({ ...a, monthly: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') handleAddManualAcct(); if (e.key === 'Escape') setAddingManualAcct(false) }}
+                        placeholder="0"
+                        className="flex-1 px-2 py-1.5 text-sm outline-none w-0"
+                      />
+                    </div>
+                  </div>
+                  <div className="w-24">
+                    <label className="block text-[10px] text-gray-400 mb-1">Annual rate</label>
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-emerald-500">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={newManualAcct.rate}
+                        onChange={e => setNewManualAcct(a => ({ ...a, rate: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') handleAddManualAcct(); if (e.key === 'Escape') setAddingManualAcct(false) }}
+                        placeholder="2"
+                        className="flex-1 px-2 py-1.5 text-sm outline-none w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="px-2 py-1.5 bg-gray-50 text-gray-400 text-xs border-l border-gray-200 select-none">%</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      onClick={handleAddManualAcct}
+                      disabled={!newManualAcct.name.trim() || !newManualAcct.balance}
+                      className="px-3 py-1.5 bg-[#0D7377] text-white text-xs font-medium rounded-lg disabled:opacity-40 hover:bg-[#0b6268] transition-colors focus:outline-none"
+                    >Add</button>
+                    <button
+                      onClick={() => { setAddingManualAcct(false); setNewManualAcct({ name: '', balance: '', rate: '' }) }}
+                      className="px-3 py-1.5 text-gray-400 text-xs hover:text-gray-600 transition-colors focus:outline-none"
+                    >Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-5 py-3 border-t border-gray-100">
+                  <button
+                    onClick={() => setAddingManualAcct(true)}
+                    className="text-xs text-emerald-600 font-medium hover:underline focus:outline-none"
+                  >
+                    + Add account
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -742,7 +912,7 @@ export default function SavingsForecastPage({ savingsEntries, user, isDemoMode }
           {goals.map(goal => {
             const isEditing = editingGoalId === goal.id
             const status    = goalStatus(goal)
-            const pct       = Math.min(100, goal.target > 0 ? (totalBalance / goal.target) * 100 : 0)
+            const pct       = Math.min(100, goal.target > 0 ? (effectiveTotalBalance / goal.target) * 100 : 0)
 
             if (isEditing) {
               return (

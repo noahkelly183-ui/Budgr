@@ -3,15 +3,15 @@
 import { motion } from 'framer-motion'
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Real-size step visuals — same density as the live app.
+   Step visuals — same density as the live app.
    Step 1: raw CSV transactions table
-   Step 2: same table, now with category pills
+   Step 2: same table, now with category pills (descriptions fully visible)
    Step 3: mini StatCards + ScoreCard line
    ───────────────────────────────────────────────────────────────────────────── */
 
 function UploadVisual() {
   const rows = [
-    { date: 'May 28', desc: 'Payroll Deposit',   amt: '+$4,720.83', pos: true },
+    { date: 'May 28', desc: 'Payroll Deposit',   amt: '+$4,720.83', pos: true  },
     { date: 'May 26', desc: 'Freshco Grocery',   amt: '−$127.45',   pos: false },
     { date: 'May 25', desc: 'Netflix.com',       amt: '−$17.99',    pos: false },
     { date: 'May 22', desc: 'Shell Gas Station', amt: '−$72.10',    pos: false },
@@ -23,16 +23,16 @@ function UploadVisual() {
         <span className="text-gray-700 font-semibold">Transactions · May 2026</span>
         <span className="text-gray-400 text-[11px] tabular-nums">61 rows · untagged</span>
       </div>
-      <div className="grid px-4 py-1.5 bg-gray-50/60 border-b border-gray-100" style={{ gridTemplateColumns: '60px 1fr 90px' }}>
+      <div className="grid px-4 py-1.5 bg-gray-50/60 border-b border-gray-100" style={{ gridTemplateColumns: '64px 1fr 100px' }}>
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Date</span>
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Description</span>
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide text-right">Amount</span>
       </div>
       {rows.map((r, i) => (
-        <div key={i} className="grid px-4 py-2 border-b border-gray-100 items-center last:border-b-0" style={{ gridTemplateColumns: '60px 1fr 90px' }}>
+        <div key={i} className="grid px-4 py-2.5 border-b border-gray-100 items-center last:border-b-0" style={{ gridTemplateColumns: '64px 1fr 100px' }}>
           <span className="text-gray-400 text-[11px] tabular-nums whitespace-nowrap">{r.date}</span>
-          <span className="text-gray-700 truncate pr-2">{r.desc}</span>
-          <span className={`text-right font-medium tabular-nums whitespace-nowrap ${r.pos ? 'text-[#0D7377] font-semibold' : 'text-gray-500'}`}>{r.amt}</span>
+          <span className="text-gray-700 pr-4">{r.desc}</span>
+          <span className={`text-right font-medium tabular-nums whitespace-nowrap text-sm ${r.pos ? 'text-[#0D7377] font-semibold' : 'text-gray-500'}`}>{r.amt}</span>
         </div>
       ))}
       <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100">
@@ -59,20 +59,20 @@ function CategorizeVisual() {
         <span className="text-gray-700 font-semibold">Transactions · May 2026</span>
         <span className="text-gray-400 text-[11px] tabular-nums">61 categorized</span>
       </div>
-      <div className="grid px-4 py-1.5 bg-gray-50/60 border-b border-gray-100" style={{ gridTemplateColumns: '60px 1fr 60px 110px' }}>
+      <div className="grid px-4 py-1.5 bg-gray-50/60 border-b border-gray-100" style={{ gridTemplateColumns: '64px 1fr 72px 120px' }}>
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Date</span>
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Description</span>
-        <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide text-right">Amt</span>
+        <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide text-right">Amount</span>
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide text-right">Category</span>
       </div>
       {rows.map((r, i) => (
-        <div key={i} className="grid px-4 py-2 border-b border-gray-100 items-center last:border-b-0" style={{ gridTemplateColumns: '60px 1fr 60px 110px' }}>
+        <div key={i} className="grid px-4 py-2.5 border-b border-gray-100 items-center last:border-b-0" style={{ gridTemplateColumns: '64px 1fr 72px 120px' }}>
           <span className="text-gray-400 text-[11px] tabular-nums whitespace-nowrap">{r.date}</span>
-          <span className="text-gray-700 truncate pr-2">{r.desc}</span>
+          <span className="text-gray-700 pr-4">{r.desc}</span>
           <span className="text-right font-medium tabular-nums text-gray-600 whitespace-nowrap">{r.amt}</span>
           <div className="flex justify-end">
             <span
-              className="text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap"
+              className="text-[11px] font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap"
               style={{ backgroundColor: r.hex + '1a', color: r.hex }}
             >
               {r.cat}
@@ -87,35 +87,33 @@ function CategorizeVisual() {
 function ReportVisual() {
   return (
     <div className="flex flex-col gap-3">
-      {/* StatCards mini */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 shadow-sm">
-          <p className="text-[11px] text-gray-500 font-medium mb-1.5">Total Spent</p>
-          <p className="text-xl font-extrabold text-gray-900 tabular-nums leading-tight tracking-tight">$2,840.00</p>
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3.5 shadow-sm">
+          <p className="text-[11px] text-gray-500 font-medium mb-2">Total Spent</p>
+          <p className="text-2xl font-extrabold text-gray-900 tabular-nums leading-tight tracking-tight">$2,840</p>
           <p className="text-[10px] text-gray-400 mt-1">Money spent this month</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 shadow-sm">
-          <p className="text-[11px] text-gray-500 font-medium mb-1.5">Amount Saved</p>
-          <p className="text-xl font-extrabold tabular-nums leading-tight tracking-tight" style={{ color: '#00C896' }}>$1,880.83</p>
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3.5 shadow-sm">
+          <p className="text-[11px] text-gray-500 font-medium mb-2">Amount Saved</p>
+          <p className="text-2xl font-extrabold tabular-nums leading-tight tracking-tight" style={{ color: '#00C896' }}>$1,880</p>
           <p className="text-[10px] text-gray-400 mt-1">Money saved this month</p>
         </div>
       </div>
-      {/* Score line */}
-      <div className="bg-white rounded-xl border border-gray-200 px-4 py-3.5 shadow-sm">
-        <div className="flex items-center gap-3 mb-3">
-          <span className="text-4xl font-black tabular-nums leading-none tracking-tight" style={{ color: '#00C896' }}>92</span>
-          <span className="text-xs text-gray-400 font-medium">/ 100</span>
+      <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 shadow-sm">
+        <div className="flex items-center gap-4 mb-3.5">
+          <span className="text-5xl font-black tabular-nums leading-none tracking-tight" style={{ color: '#00C896' }}>92</span>
+          <span className="text-sm text-gray-400 font-medium">/ 100</span>
           <div className="flex-1">
             <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Monthly Score</div>
             <div className="text-sm font-bold text-gray-900">Outstanding</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-gray-500 shrink-0">Savings Rate</span>
+          <span className="text-xs text-gray-500 shrink-0 w-20">Savings Rate</span>
           <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div className="h-full rounded-full" style={{ width: '48%', backgroundColor: '#00C896' }} />
           </div>
-          <span className="text-[11px] font-bold tabular-nums" style={{ color: '#0D7377' }}>48%</span>
+          <span className="text-xs font-bold tabular-nums" style={{ color: '#0D7377' }}>48%</span>
         </div>
       </div>
     </div>
@@ -181,34 +179,41 @@ export default function HowItWorks() {
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+        {/* Vertical step stack */}
+        <div className="space-y-4">
           {STEPS.map((step, i) => (
             <motion.div
               key={step.num}
-              className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-4 shadow-sm"
+              className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden"
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.5, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.5, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
             >
-              {/* Step badge + title */}
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 shrink-0 rounded-lg bg-budgli-teal/8 border border-budgli-teal/15 flex items-center justify-center">
-                  {step.icon}
+              <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr]">
+
+                {/* Left: step info */}
+                <div className="p-6 flex flex-col justify-center border-b lg:border-b-0 lg:border-r border-gray-100">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 shrink-0 rounded-lg bg-budgli-teal/8 border border-budgli-teal/15 flex items-center justify-center">
+                      {step.icon}
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-bold text-budgli-teal/60 tracking-widest uppercase mb-0.5">
+                        Step {step.num}
+                      </p>
+                      <h3 className="text-sm font-semibold text-gray-900 leading-snug">{step.title}</h3>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-500 leading-relaxed">{step.description}</p>
                 </div>
-                <div>
-                  <p className="text-[9px] font-bold text-budgli-teal/60 tracking-widest uppercase mb-0.5">
-                    Step {step.num}
-                  </p>
-                  <h3 className="text-sm font-semibold text-gray-900 leading-snug">{step.title}</h3>
+
+                {/* Right: visual */}
+                <div className="p-5 bg-gray-50/40">
+                  {step.visual}
                 </div>
+
               </div>
-
-              {/* Real-size step visual */}
-              <div className="flex-1">{step.visual}</div>
-
-              {/* Description */}
-              <p className="text-sm text-gray-500 leading-relaxed">{step.description}</p>
             </motion.div>
           ))}
         </div>
