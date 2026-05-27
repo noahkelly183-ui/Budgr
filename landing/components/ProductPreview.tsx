@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 
-const APP_URL = 'https://www.budgli.com'
+const APP_URL = 'https://app.budgli.com'
 
 // ─── callout data ─────────────────────────────────────────────────────────────
 
