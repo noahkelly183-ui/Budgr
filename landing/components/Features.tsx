@@ -248,6 +248,8 @@ export default function Features() {
                 </ul>
                 <a
                   href={APP_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 self-start px-5 py-2.5 rounded-xl bg-budgli-teal hover:bg-budgli-teal-dark text-white font-semibold text-sm transition-colors"
                 >
                   Get started

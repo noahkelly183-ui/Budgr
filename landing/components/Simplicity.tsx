@@ -174,6 +174,8 @@ export default function Simplicity() {
         >
           <a
             href={APP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl bg-budgli-green hover:bg-budgli-green-dark active:scale-[0.98] text-budgli-navy font-semibold text-sm transition-all duration-150 shadow-lg shadow-budgli-green/25"
           >
             Start with your transactions

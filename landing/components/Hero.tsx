@@ -130,12 +130,16 @@ export default function Hero() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <a
               href={APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-full sm:w-auto bg-budgli-green hover:bg-budgli-green-dark active:scale-[0.98] text-budgli-navy font-semibold px-8 py-3.5 rounded-xl shadow-lg shadow-budgli-green/25 text-sm transition-all duration-150"
             >
               Try Budgli
             </a>
             <a
               href={APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-full sm:w-auto border border-white/20 hover:border-white/35 hover:bg-white/6 text-white/80 hover:text-white font-medium px-8 py-3.5 rounded-xl text-sm transition-all duration-150"
             >
               View demo

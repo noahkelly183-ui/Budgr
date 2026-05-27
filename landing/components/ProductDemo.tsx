@@ -497,6 +497,8 @@ export default function ProductDemo() {
 
                 <a
                   href={APP_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 mt-8 px-5 py-2.5 rounded-xl bg-budgli-teal hover:bg-budgli-teal-dark text-white font-semibold text-sm transition-colors shadow-lg shadow-budgli-teal/20"
                 >
                   Try it free

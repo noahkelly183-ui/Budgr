@@ -42,12 +42,16 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-2 shrink-0">
           <a
             href={APP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors px-3.5 py-2"
           >
             Log in
           </a>
           <a
             href={APP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-sm font-semibold bg-budgli-green hover:bg-budgli-green-dark text-budgli-navy px-4 py-2 rounded-lg transition-colors shadow-sm shadow-budgli-green/20"
           >
             Get started
@@ -86,11 +90,13 @@ export default function Navbar() {
             </a>
           ))}
           <div className="pt-4 border-t border-gray-100 mt-2 flex flex-col gap-2">
-            <a href={APP_URL} className="text-sm font-medium text-gray-500 hover:text-gray-900 text-center py-2.5 transition-colors">
+            <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-gray-500 hover:text-gray-900 text-center py-2.5 transition-colors">
               Log in
             </a>
             <a
               href={APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-sm font-semibold bg-budgli-green hover:bg-budgli-green-dark text-budgli-navy px-4 py-3 rounded-lg transition-colors text-center shadow-sm shadow-budgli-green/20"
             >
               Get started

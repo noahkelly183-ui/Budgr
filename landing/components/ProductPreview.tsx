@@ -191,6 +191,8 @@ export default function ProductPreview() {
           </div>
           <a
             href={APP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className="shrink-0 px-6 py-2.5 rounded-xl bg-budgli-teal hover:bg-budgli-teal-dark text-white font-semibold text-sm transition-colors shadow-lg shadow-budgli-teal/20 whitespace-nowrap"
           >
             Get started

@@ -77,6 +77,8 @@ export default function Pricing() {
 
             <a
               href={APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="block w-full text-center py-3.5 rounded-xl bg-budgli-green hover:bg-budgli-green-dark active:scale-[0.98] text-budgli-navy font-semibold text-sm transition-all duration-150 shadow-lg shadow-budgli-green/20"
             >
               Get started

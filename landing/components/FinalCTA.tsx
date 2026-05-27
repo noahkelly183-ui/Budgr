@@ -36,12 +36,16 @@ export default function FinalCTA() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-8">
             <a
               href={APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-full sm:w-auto px-8 py-4 rounded-xl bg-budgli-green hover:bg-budgli-green-dark active:scale-[0.98] text-budgli-navy font-bold text-sm transition-all duration-150 shadow-xl shadow-budgli-green/20"
             >
               Try Budgli — it&apos;s free
             </a>
             <a
               href={APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-full sm:w-auto px-8 py-4 rounded-xl border border-white/20 hover:border-white/35 hover:bg-white/6 active:scale-[0.98] text-white/75 hover:text-white font-medium text-sm transition-all duration-150"
             >
               View demo

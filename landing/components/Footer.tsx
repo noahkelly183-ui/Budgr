@@ -5,7 +5,7 @@ const NAV_LINKS = [
   { label: 'Features',     href: '#features'     },
   { label: 'Pricing',      href: '#pricing'      },
   { label: 'FAQ',          href: '#faq'           },
-  { label: 'Log in',       href: APP_URL          },
+  { label: 'Log in',       href: APP_URL, external: true },
 ]
 
 export default function Footer() {
@@ -33,6 +33,7 @@ export default function Footer() {
               <a
                 key={link.label}
                 href={link.href}
+                {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                 className="text-white/45 hover:text-white/75 text-xs transition-colors"
               >
                 {link.label}
