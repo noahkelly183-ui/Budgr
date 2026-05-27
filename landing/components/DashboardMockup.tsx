@@ -11,7 +11,7 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 const SCORE_BARS = [
   { label: 'Savings Rate',         value: 50, max: 50 },
-  { label: 'Spending Consistency', value: 36, max: 40 },
+  { label: 'Consistency',          value: 36, max: 40 },
   { label: 'Clarity',              value: 10, max: 10 },
 ]
 
@@ -236,7 +236,7 @@ export function DashboardMockup() {
                 </p>
                 {SCORE_BARS.map((bar) => (
                   <div key={bar.label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <span style={{ fontSize: 9.5, color: '#64748B', width: 130, flexShrink: 0 }}>{bar.label}</span>
+                    <span style={{ fontSize: 9.5, color: '#64748B', width: 90, flexShrink: 0 }}>{bar.label}</span>
                     <div style={{ flex: 1, background: '#F1F5F9', borderRadius: 99, height: 5, overflow: 'hidden' }}>
                       <div style={{ width: `${(bar.value / bar.max) * 100}%`, height: '100%', background: GREEN, borderRadius: 99 }} />
                     </div>

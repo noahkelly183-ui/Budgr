@@ -59,20 +59,20 @@ function CategorizeVisual() {
         <span className="text-gray-700 font-semibold">Transactions · May 2026</span>
         <span className="text-gray-400 text-[11px] tabular-nums">61 categorized</span>
       </div>
-      <div className="grid px-4 py-1.5 bg-gray-50/60 border-b border-gray-100" style={{ gridTemplateColumns: '64px 1fr 72px 120px' }}>
+      <div className="grid px-4 py-1.5 bg-gray-50/60 border-b border-gray-100 grid-cols-[50px_1fr_56px_76px] sm:grid-cols-[64px_1fr_72px_120px]">
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Date</span>
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Description</span>
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide text-right">Amount</span>
         <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide text-right">Category</span>
       </div>
       {rows.map((r, i) => (
-        <div key={i} className="grid px-4 py-2.5 border-b border-gray-100 items-center last:border-b-0" style={{ gridTemplateColumns: '64px 1fr 72px 120px' }}>
+        <div key={i} className="grid px-4 py-2.5 border-b border-gray-100 items-center last:border-b-0 grid-cols-[50px_1fr_56px_76px] sm:grid-cols-[64px_1fr_72px_120px]">
           <span className="text-gray-400 text-[11px] tabular-nums whitespace-nowrap">{r.date}</span>
-          <span className="text-gray-700 pr-4">{r.desc}</span>
+          <span className="text-gray-700 pr-2 truncate">{r.desc}</span>
           <span className="text-right font-medium tabular-nums text-gray-600 whitespace-nowrap">{r.amt}</span>
-          <div className="flex justify-end">
+          <div className="flex justify-end min-w-0">
             <span
-              className="text-[11px] font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap"
+              className="text-[11px] font-medium px-2 py-0.5 rounded-full truncate max-w-full"
               style={{ backgroundColor: r.hex + '1a', color: r.hex }}
             >
               {r.cat}

@@ -100,12 +100,12 @@ export default function BetaFeedback() {
               <p className="text-xs text-gray-400">We&apos;ll be in touch as beta access opens up.</p>
             </div>
           ) : (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-8 text-center">
               <p className="text-base font-bold text-gray-900 mb-1">Help shape Budgli</p>
-              <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+              <p className="text-sm text-gray-500 mb-5 sm:mb-6 leading-relaxed">
                 Try the monthly reporting flow and tell us what to improve.
               </p>
-              <form onSubmit={handleSubmit} className="flex gap-2">
+              <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="email"
                   required
@@ -116,7 +116,7 @@ export default function BetaFeedback() {
                 />
                 <button
                   type="submit"
-                  className="shrink-0 px-5 py-3 rounded-xl text-sm font-semibold text-white bg-budgli-navy hover:bg-budgli-teal transition-colors"
+                  className="w-full sm:w-auto shrink-0 px-5 py-3 rounded-xl text-sm font-semibold text-white bg-budgli-navy hover:bg-budgli-teal transition-colors"
                 >
                   Join the beta
                 </button>

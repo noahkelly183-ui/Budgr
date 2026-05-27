@@ -12,32 +12,32 @@ const APP_URL = 'https://app.budgli.com'
 
 function PreviewStatCards() {
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 shadow-sm">
-        <div className="flex items-center gap-2.5 mb-2">
-          <span className="w-7 h-7 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
-            <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+      <div className="bg-white rounded-xl border border-gray-200 px-3 py-3 sm:px-5 sm:py-4 shadow-sm min-w-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 mb-2">
+          <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
+            <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-400" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
             </svg>
           </span>
-          <span className="text-sm text-gray-700 font-medium">Total Spent</span>
+          <span className="text-xs sm:text-sm text-gray-700 font-medium">Total Spent</span>
         </div>
-        <p className="text-3xl font-extrabold text-gray-900 tabular-nums leading-tight tracking-tight">$2,840.00</p>
-        <p className="text-xs text-gray-400 mt-1.5">Money spent this month</p>
+        <p className="text-xl sm:text-3xl font-extrabold text-gray-900 tabular-nums leading-tight tracking-tight">$2,840</p>
+        <p className="text-[10px] sm:text-xs text-gray-400 mt-1 sm:mt-1.5">Money spent this month</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 shadow-sm">
-        <div className="flex items-center gap-2.5 mb-2">
-          <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+      <div className="bg-white rounded-xl border border-gray-200 px-3 py-3 sm:px-5 sm:py-4 shadow-sm min-w-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 mb-2">
+          <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center shrink-0"
             style={{ backgroundColor: '#F0FDF9', border: '1px solid rgba(0,200,150,0.20)' }}>
-            <svg className="w-3.5 h-3.5" style={{ color: '#00C896' }} fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+            <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" style={{ color: '#00C896' }} fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
           </span>
-          <span className="text-sm text-gray-700 font-medium">Amount Saved</span>
+          <span className="text-xs sm:text-sm text-gray-700 font-medium">Amount Saved</span>
         </div>
-        <p className="text-3xl font-extrabold tabular-nums leading-tight tracking-tight" style={{ color: '#00C896' }}>$1,880.83</p>
-        <p className="text-xs text-gray-400 mt-1.5">Money saved this month</p>
+        <p className="text-xl sm:text-3xl font-extrabold tabular-nums leading-tight tracking-tight" style={{ color: '#00C896' }}>$1,880</p>
+        <p className="text-[10px] sm:text-xs text-gray-400 mt-1 sm:mt-1.5">Money saved this month</p>
       </div>
     </div>
   )
@@ -46,7 +46,7 @@ function PreviewStatCards() {
 function PreviewScoreCard() {
   const factors = [
     { name: 'Savings Rate',         value: 48, max: 50 },
-    { name: 'Spending Consistency', value: 34, max: 40 },
+    { name: 'Consistency',          value: 34, max: 40 },
     { name: 'Clarity',              value: 10, max: 10 },
   ]
   return (
@@ -62,12 +62,12 @@ function PreviewScoreCard() {
             <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
           </div>
           <div className="text-base font-bold text-gray-900">Outstanding</div>
-          <div className="text-xs text-gray-500 mt-0.5">Based on savings rate, spending consistency, and report clarity.</div>
+          <div className="text-xs text-gray-500 mt-0.5">Based on savings rate, consistency, and report clarity.</div>
         </div>
       </div>
       <div className="space-y-2">
         {factors.map(f => (
-          <div key={f.name} className="grid grid-cols-[140px_1fr_56px] items-center gap-3">
+          <div key={f.name} className="grid grid-cols-[80px_1fr_40px] sm:grid-cols-[140px_1fr_56px] items-center gap-2 sm:gap-3">
             <div className="text-xs text-gray-700">{f.name}</div>
             <div className="bg-gray-100 h-1.5 rounded-full overflow-hidden">
               <div className="h-full rounded-full" style={{ width: `${(f.value / f.max) * 100}%`, backgroundColor: '#00C896' }} />
