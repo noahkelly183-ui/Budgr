@@ -38,7 +38,7 @@ export default function FAQ() {
   const [open, setOpen] = useState<number | null>(null)
 
   return (
-    <section id="faq" className="py-20 px-6 bg-[#F8FAFC]">
+    <section id="faq" className="py-20 px-6 bg-budgli-navy">
       <div className="max-w-2xl mx-auto">
 
         <motion.div
@@ -51,15 +51,15 @@ export default function FAQ() {
           <p className="text-[11px] font-semibold tracking-widest uppercase text-budgli-teal mb-4">
             FAQ
           </p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-budgli-navy mb-4">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
             Common questions.
           </h2>
-          <p className="text-gray-500 text-base leading-relaxed">
+          <p className="text-white/55 text-base leading-relaxed">
             Answers to questions worth having before you sign up.
           </p>
         </motion.div>
 
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-white/10">
           {FAQS.map((faq, i) => {
             const isOpen = open === i
             return (
@@ -75,11 +75,11 @@ export default function FAQ() {
                   onClick={() => setOpen(isOpen ? null : i)}
                   aria-expanded={isOpen}
                 >
-                  <span className="text-sm font-semibold text-gray-900 group-hover:text-budgli-teal transition-colors leading-snug">
+                  <span className="text-sm font-semibold text-white group-hover:text-budgli-green transition-colors leading-snug">
                     {faq.q}
                   </span>
                   <span
-                    className="shrink-0 w-5 h-5 rounded-full border border-gray-200 flex items-center justify-center text-gray-400 transition-all duration-200"
+                    className="shrink-0 w-5 h-5 rounded-full border border-white/20 flex items-center justify-center text-white/40 transition-all duration-200"
                     style={{ transform: isOpen ? 'rotate(45deg)' : 'rotate(0deg)' }}
                   >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -97,7 +97,7 @@ export default function FAQ() {
                       transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
                       className="overflow-hidden"
                     >
-                      <p className="pb-5 text-sm text-gray-500 leading-relaxed">
+                      <p className="pb-5 text-sm text-white/60 leading-relaxed">
                         {faq.a}
                       </p>
                     </motion.div>

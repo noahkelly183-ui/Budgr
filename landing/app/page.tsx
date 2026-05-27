@@ -1,9 +1,8 @@
 import Navbar from '@/components/Navbar'
 import Hero from '@/components/Hero'
-import Problem from '@/components/Problem'
-import Simplicity from '@/components/Simplicity'
-import FounderStory from '@/components/FounderStory'
 import HowItWorks from '@/components/HowItWorks'
+import FounderStory from '@/components/FounderStory'
+import BetaFeedback from '@/components/BetaFeedback'
 import ProductPillars from '@/components/ProductPillars'
 import AccuracyPhilosophy from '@/components/AccuracyPhilosophy'
 import Trust from '@/components/Trust'
@@ -17,19 +16,18 @@ export default function Home() {
     <>
       <Navbar />
       <main>
-        <Hero />                {/* navy */}
-        <Problem />             {/* white */}
-        <Simplicity />          {/* #F7F8FA */}
-        <FounderStory />        {/* #F8FAFC */}
-        <HowItWorks />          {/* #F7F8FA */}
-        <ProductPillars />      {/* navy */}
-        <AccuracyPhilosophy />  {/* white */}
-        <Trust />               {/* #F8FAFC */}
-        <FinalCTA />            {/* navy */}
-        <Pricing />             {/* white */}
-        <FAQ />                 {/* #F8FAFC */}
+        <Hero />              {/* navy */}
+        <HowItWorks />        {/* white */}
+        <FounderStory />      {/* teal #0D7377 */}
+        <BetaFeedback />      {/* #F8FAFC */}
+        <ProductPillars />    {/* navy */}
+        <AccuracyPhilosophy />{/* teal #0D7377 */}
+        <Trust />             {/* white */}
+        <FinalCTA />          {/* navy */}
+        <Pricing />           {/* white */}
+        <FAQ />               {/* #F8FAFC */}
       </main>
-      <Footer />                {/* navy */}
+      <Footer />              {/* navy */}
     </>
   )
 }

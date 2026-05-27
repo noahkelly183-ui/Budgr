@@ -1,4 +1,4 @@
-const APP_URL = 'https://www.budgli.com'
+const APP_URL = 'https://app.budgli.com'
 
 const NAV_LINKS = [
   { label: 'How it works', href: '#how-it-works' },

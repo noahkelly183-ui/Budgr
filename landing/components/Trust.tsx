@@ -124,7 +124,7 @@ const CARDS = [
 
 export default function Trust() {
   return (
-    <section className="py-20 px-6 bg-[#F8FAFC]">
+    <section className="py-20 px-6 bg-white">
       <div className="max-w-5xl mx-auto">
 
         <motion.div
@@ -137,7 +137,7 @@ export default function Trust() {
           <p className="text-[11px] font-semibold tracking-widest uppercase text-budgli-teal mb-4">
             Privacy
           </p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-budgli-navy mb-4">
+          <h2 className="text-3xl sm:text-4xl font-bold text-budgli-teal mb-4">
             Your data stays yours.
           </h2>
           <p className="text-gray-500 text-base max-w-xl mx-auto leading-relaxed">

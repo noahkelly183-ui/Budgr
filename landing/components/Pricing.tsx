@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 
-const APP_URL = 'https://www.budgli.com'
+const APP_URL = 'https://app.budgli.com'
 
 const FEATURES = [
   'CSV transaction import',
@@ -29,7 +29,7 @@ export default function Pricing() {
           <p className="text-[11px] font-semibold tracking-widest uppercase text-budgli-teal mb-4">
             Pricing
           </p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-budgli-navy mb-4">
+          <h2 className="text-3xl sm:text-4xl font-bold text-budgli-teal mb-4">
             Free during beta.
           </h2>
           <p className="text-gray-500 text-base max-w-md mx-auto leading-relaxed">

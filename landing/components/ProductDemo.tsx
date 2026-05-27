@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-const APP_URL = 'https://www.budgli.com'
+const APP_URL = 'https://app.budgli.com'
 
 // ─── tab definitions ──────────────────────────────────────────────────────────
 
